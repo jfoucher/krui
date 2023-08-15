@@ -1,0 +1,152 @@
+{
+  "controller_fan controller_fan": {
+    "speed": 1.0
+  },
+  "extruder": {
+    "temperature": 27.04
+  },
+  "gcode_move": {
+    "gcode_position": [
+      350.0,
+      350.0,
+      10.0,
+      0.0
+    ],
+    "position": [
+      350.0,
+      350.0,
+      10.0,
+      0.0
+    ]
+  },
+  "heater_bed": {
+    "temperature": 26.46
+  },
+  "idle_timeout": {
+    "printing_time": 0.0,
+    "state": "Ready"
+  },
+  "mcu": {
+    "last_stats": {
+      "bytes_invalid": 0,
+      "bytes_read": 15542896,
+      "bytes_retransmit": 9,
+      "bytes_write": 874459,
+      "freq": 180000416,
+      "mcu_awake": 0.003,
+      "mcu_task_avg": 7e-6,
+      "mcu_task_stddev": 4e-6,
+      "ready_bytes": 0,
+      "receive_seq": 105730,
+      "retransmit_seq": 2,
+      "rto": 0.025,
+      "rttvar": 0.0,
+      "send_seq": 105730,
+      "srtt": 0.0,
+      "upcoming_bytes": 0
+    }
+  },
+  "motion_report": {
+    "live_position": [
+      350.0,
+      350.0,
+      10.0,
+      0.0
+    ],
+    "live_velocity": 0.0
+  },
+  "neopixel sb_leds": {
+    "color_data": [
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  "stepper_enable": {
+    "steppers": {
+      "extruder": false,
+      "stepper_x": true,
+      "stepper_y": true,
+      "stepper_z": true,
+      "stepper_z1": true,
+      "stepper_z2": true,
+      "stepper_z3": true
+    }
+  },
+  "system_stats": {
+    "cputime": 9908.105378957,
+    "memavail": 3425676,
+    "sysload": 0.14
+  },
+  "temperature_fan exhaust_fan": {
+    "temperature": 26.19
+  },
+  "temperature_fan pi_temp": {
+    "temperature": 53.56
+  },
+  "temperature_host pi_temp": {
+    "temperature": 53.56
+  },
+  "tmc2209 stepper_x": {
+    "drv_status": {
+      "cs_actual": 31,
+      "stst": 1
+    },
+    "phase_offset_position": 695.09375
+  },
+  "tmc2209 stepper_y": {
+    "drv_status": {
+      "cs_actual": 31,
+      "stst": 1
+    },
+    "phase_offset_position": 4.36875
+  },
+  "tmc2209 stepper_z": {
+    "drv_status": {
+      "cs_actual": 25,
+      "stst": 1
+    },
+    "phase_offset_position": -29.98625
+  },
+  "tmc2209 stepper_z1": {
+    "drv_status": {
+      "cs_actual": 25,
+      "stst": 1
+    },
+    "phase_offset_position": -29.84875
+  },
+  "tmc2209 stepper_z2": {
+    "drv_status": {
+      "cs_actual": 25,
+      "stst": 1
+    },
+    "phase_offset_position": -29.97625
+  },
+  "tmc2209 stepper_z3": {
+    "drv_status": {
+      "cs_actual": 25,
+      "stst": 1
+    },
+    "phase_offset_position": -29.94875
+  },
+  "toolhead": {
+    "estimated_print_time": 91746.44204349443,
+    "homed_axes": "xy",
+    "print_time": 91717.04125771111
+  }
+}
