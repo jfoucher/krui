@@ -32,17 +32,10 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         c = " ✔ ";
         bg = Color::Green;
     }
-
-    let st = match app.printer.status.get("toolhead") {
-        Some(h) => {
-            let hh = match h.get("homed_axes") {
-                Some(home) => home.to_string(),
-                None => String::from("")
-            };
-            hh
-        },
-        None => String::from(""),
-    };
+    let mut st = format!("{:?}", app.printer.status.heaters);
+    if let Some(extruder) = app.printer.status.heaters.get("extruder") {
+        st = format!("{} {}", extruder.target, extruder.temperature);
+    }
     
 
 
@@ -50,8 +43,7 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         Line::from(vec![
             Span::styled(c, Style::default().bg(bg).fg(Color::White)),
             Span::styled("line", Style::default().add_modifier(Modifier::ITALIC).add_modifier(Modifier::BOLD).bg(Color::Gray).fg(Color::DarkGray)),
-            Span::raw("."),
-            Span::styled(format!("Second line {}", st), Style::default().fg(Color::Red)),
+            Span::styled(format!("{}", st), Style::default().fg(Color::Red).bg(Color::Blue)),
         ]),
     ];
     let p = Paragraph::new(text)

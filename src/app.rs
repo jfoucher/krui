@@ -52,20 +52,30 @@ pub struct RpcRequest {
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct Heater {
-    temperature: f64,
-    target: f64,
-    power: f64,
+    #[serde(default = "default_float")]
+    pub temperature: f64,
+    #[serde(default = "default_float")]
+    pub target: f64,
+    #[serde(default = "default_float")]
+    pub power: f64,
+}
+
+pub fn default_float() -> f64 {
+    return 0.0;
 }
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct TemperatureFan {
-    temperature: f64,
-    target: f64,
-    speed: f64,
+    #[serde(default = "default_float")]
+    pub temperature: f64,
+    #[serde(default = "default_float")]
+    pub target: f64,
+    #[serde(default = "default_float")]
+    pub speed: f64,
 }
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct PrinterStatus {
-    heaters: Vec<Heater>,
-    temperatures_fans: Vec<TemperatureFan>
+    pub heaters: HashMap<String, Heater>,
+    pub temperatures_fans: HashMap<String, TemperatureFan>
 }
 
 
@@ -73,45 +83,50 @@ pub struct PrinterStatus {
 pub struct Printer {
     pub connected: bool,
     pub status: PrinterStatus,
+    pub req_time: f64,
 }
 
 impl Printer {
     fn new() -> Printer {
         Printer {
             connected: false,
-            status: PrinterStatus { heaters: vec![], temperatures_fans: vec![] }
+            req_time: 0.0,
+            status: PrinterStatus { heaters: HashMap::new(), temperatures_fans: HashMap::new() }
         }
-    }
-
-    pub fn merge(&mut self, o: serde_json::Value, n: serde_json::Value) -> serde_json::Value {
-        let new = n.as_object().unwrap();
-        let old = o.as_object();
-        let mut ret = match old {
-            Some(old_object) => {
-                old_object.clone()
-            },
-            None => {
-                Map::new()
-            }
-        };
-        for (k, v) in new {
-            if v.is_object() {
-                if ret.contains_key(k) {
-                    let re = ret.get(k).unwrap().clone();
-                    ret.insert(k.to_string(), serde_json::Value::Object(self.merge(re, v.clone()).as_object().unwrap().clone()));
-                } else {
-                    ret.insert(k.to_string(), v.clone());
-                }
-            } else {
-                ret.insert(k.to_string(), v.clone());
-            }
-        }
-        serde_json::Value::Object(ret)
     }
 
     pub fn update(&mut self, data: serde_json::Value) {
-        let st = self.status.clone();
-        self.status = self.merge(st, data);
+        if let Some(heaters) = data.get("heaters") {
+            if let Some(available_heaters) = heaters.get("available_heaters") {
+                // add heater to HashMap of heaters, with blank heaters
+                for h in available_heaters.as_array().unwrap() {
+                    let heater_name: String = serde_json::from_value(h.clone()).unwrap();
+                    if let None = self.status.heaters.get(&heater_name) {
+                        self.status.heaters.insert(serde_json::from_value(h.clone()).unwrap(), Heater { temperature: 0.0, target: 0.0, power: 0.0 });
+                    }
+                    
+                }
+            }
+        }
+        // For each heater, check if we have data to set their values
+        let mut new_heaters = self.status.heaters.clone();
+        for (k, heater) in &self.status.heaters {
+            // try to get current heater from data
+            if let Some(heater_data) = data.get(k) {
+                let mut nh = heater.clone();
+                if let Some(temp) = heater_data.get("temperature") {
+                    nh.temperature = serde_json::from_value(temp.clone()).unwrap();
+                }
+                if let Some(pow) = heater_data.get("power") {
+                    nh.power = serde_json::from_value(pow.clone()).unwrap();
+                }
+                if let Some(t) = heater_data.get("target") {
+                    nh.target = serde_json::from_value(t.clone()).unwrap();
+                }
+                new_heaters.insert(k.to_string(), nh);
+            }
+        }
+        self.status.heaters = new_heaters;
     }
 }
 
@@ -126,7 +141,6 @@ pub struct App {
     /// Is the application running?
     pub running: bool,
     pub data: String,
-    pub objects: Vec<String>,
     pub printer: Printer,
     pub rx: Receiver<OwnedMessage>,
     pub tx: Sender<OwnedMessage>,
@@ -146,67 +160,42 @@ impl Default for App {
 
         let tx_1 = send_tx.clone();
 
-        let send_loop = thread::spawn(move || {
+        let _send_loop = thread::spawn(move || {
             loop {
                 // Send loop
-                let message = match send_rx.recv() {
-                    Ok(m) => m,
-                    Err(e) => {
-                        // println!("Send Loop: {:?}", e);
-                        return;
-                    }
+                match send_rx.try_recv() {
+                    Ok(m) => {
+                        let _ = sender.send_message(&m);
+                    },
+                    Err(_e) => {}
                 };
-                match message {
-                    OwnedMessage::Close(_) => {
-                        let _ = sender.send_message(&message);
-                        // If it's a close message, just send it and then return.
-                        return;
-                    }
-                    _ => (),
-                }
-                // Send the message
-                match sender.send_message(&message) {
-                    Ok(()) => (),
-                    Err(e) => {
-                        // println!("Send Loop: {:?}", e);
-                        let _ = sender.send_message(&Message::close());
-                        return;
-                    }
-                }
             }
         });
 
-        let receive_loop = thread::spawn(move || {
+        let _receive_loop = thread::spawn(move || {
             // Receive loop
-            for message in receiver.incoming_messages() {
+            loop {
+                let rcv = thread::spawn(move || {
+                    let message = receiver.recv_message();
+                });
+
+                rcv.join();
+                
                 let message = match message {
                     Ok(m) => m,
-                    Err(e) => {
-                        let _ = tx_1.send(OwnedMessage::Close(None));
-                        return;
+                    Err(_e) => {
+                        OwnedMessage::Binary(vec![])
                     }
                 };
                 match message {
-                    OwnedMessage::Close(_) => {
-                        // Got a close message, so send a close message and return
-                        let _ = tx_1.send(OwnedMessage::Close(None));
-                        // Let app know that the connection was closed
-                        let _ = rcv_tx.send(OwnedMessage::Close(None));
-                        return;
-                    }
-                    OwnedMessage::Ping(data) => {
-                        match tx_1.send(OwnedMessage::Pong(data)) {
-                            // Send a pong in response
-                            Ok(()) => (),
-                            Err(e) => {
-                                // println!("Receive Loop ping err: {:?}", e);
-                                return;
-                            }
-                        }
-                    }
-                    // Say what we received
-                    _ => {
+                    OwnedMessage::Text(_) => {
                         let _ = rcv_tx.send(message);
+                    },
+                    OwnedMessage::Ping(_) => {
+                        let _ = tx_1.send(OwnedMessage::Pong(vec![]));
+                    },
+                    _ => {
+                        println!("not a text message {:?}", message);
                     },
                 }
             }
@@ -215,8 +204,6 @@ impl Default for App {
         Self {
             running: true,
             data: String::from(""),
-            objects: vec![],
-
             printer: Printer::new(),
             tx: send_tx,
             rx: rcv_rx,
@@ -228,9 +215,7 @@ impl Default for App {
 impl App {
     /// Constructs a new instance of [`App`].
     pub fn new() -> Self {
-        
         Self::default()
-        
     }
 
     /// Handles the tick event of the terminal.
@@ -306,10 +291,10 @@ impl App {
                     self.printer.connected = serde_json::from_value(response.result["klippy_connected"].clone()).unwrap();
                 }
                 "printer.objects.list" => {
-                    self.objects = serde_json::from_value(response.result["objects"].clone()).unwrap();
+                    let json_objects: Vec<String> = serde_json::from_value(response.result["objects"].clone()).unwrap();
                     let mut params = serde_json::Map::new();
                     let mut objects = serde_json::Map::new();
-                    for ob in self.objects.iter() {
+                    for ob in json_objects.iter() {
                         objects.insert(ob.clone(), serde_json::Value::Null);
                     }
                     params.insert("objects".to_string(), objects.into());
@@ -318,7 +303,7 @@ impl App {
                     self.send_message("printer.objects.subscribe".to_string(), serde_json::Value::Object(params));
                 },
                 "printer.objects.query" => {
-                    self.printer.status = response.result.get("status").unwrap().clone();
+                    self.printer.update(response.result.get("status").unwrap().clone());
                 }
                 _ => {
                     //println!("not implemented")
@@ -337,18 +322,11 @@ impl App {
                 //println!("{:?}", request.params);
                 self.printer.update(request.params.get(0).unwrap().clone());
                 // TODO update PrinterStatus struct
-                let ex = self.printer.status.get("extruder");
+                self.printer.req_time = serde_json::from_value(request.params.get(1).unwrap().clone()).unwrap();
                 // let path = "data.json";
                 // let mut output = File::create(path).unwrap();
                 // let line = serde_json::to_string_pretty(&self.printer.status).unwrap();
                 // write!(output, "{}", line);
-
-                match ex {
-                    Some(e) => {
-                        self.data = format!("{}", e.get("temperature").unwrap().to_string())
-                    },
-                    None => {}
-                }
                
             }
             _ => {

@@ -2,9 +2,9 @@ use krui::app::{App, AppResult};
 use krui::event::{Event, EventHandler};
 use krui::handler::handle_key_events;
 use krui::tui::Tui;
-use serde_json::Map;
+
 use std::io;
-use std::ptr::NonNull;
+
 use tui::backend::CrosstermBackend;
 use tui::Terminal;
 
