@@ -12,11 +12,4 @@ websocket = "0.26.5"
 rand = "0.8.5"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-async-tungstenite = "*"
-futures = "*"
-async-std = "*"
-futures-util = "*"
-
-[features]
-default = ["async-std-runtime"]
-async-std-runtime = ["async-tungstenite/async-std-runtime"]
+flume = { version = "0.10", default-features = false, features = ["spin", "select"] }

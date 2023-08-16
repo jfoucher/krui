@@ -32,18 +32,32 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         c = " ✔ ";
         bg = Color::Green;
     }
-    let mut st = format!("{:?}", app.printer.status.heaters);
-    if let Some(extruder) = app.printer.status.heaters.get("extruder") {
-        st = format!("{} {}", extruder.target, extruder.temperature);
-    }
-    
+    let state = app.printer.stats.state.clone();
 
-
+    let (state_bg, state_fg) = match state.as_str() {
+        "standby" => (Color::Gray, Color::LightGreen),
+        "printing" => (Color::Green, Color::White),
+        "paused"   => (Color::Gray, Color::LightCyan),
+        "complete"  => (Color::LightGreen, Color::Black),
+        "cancelled" => (Color::Gray, Color::White),
+        "error"     => (Color::Red, Color::White),
+        _ => (Color::Black, Color::White),
+    };
+    let h = app.printer.toolhead.homed.x && app.printer.toolhead.homed.y && app.printer.toolhead.homed.z;
+    let qgl = app.printer.toolhead.homed.qgl;
+    let fan = app.printer.toolhead.fan.speed;
     let text = vec![
         Line::from(vec![
             Span::styled(c, Style::default().bg(bg).fg(Color::White)),
-            Span::styled("line", Style::default().add_modifier(Modifier::ITALIC).add_modifier(Modifier::BOLD).bg(Color::Gray).fg(Color::DarkGray)),
-            Span::styled(format!("{}", st), Style::default().fg(Color::Red).bg(Color::Blue)),
+            Span::styled(" ", Style::default().bg(Color::Black)),
+            Span::styled(state, Style::default().bg(state_bg).fg(state_fg)),
+            Span::styled(" ", Style::default().bg(Color::Black)),
+            Span::styled("Home", Style::default().fg(Color::White).bg(if h {Color::Green} else {Color::Red})),
+            Span::styled(" ", Style::default().bg(Color::Black)),
+            Span::styled("QGL", Style::default().fg(Color::White).bg(if qgl {Color::Green} else {Color::Red})),
+            Span::styled(" ", Style::default().bg(Color::Black)),
+            Span::styled(format!("Fan {:.0}", fan*100.0), Style::default().fg(Color::White).bg(if fan < 0.3 {Color::Green} else if fan < 0.6 {Color::LightRed } else {Color::Red})),
+
         ]),
     ];
     let p = Paragraph::new(text)

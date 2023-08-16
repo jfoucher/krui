@@ -5,10 +5,14 @@ use std::io::Write;
 use websocket::ws::dataframe::DataFrame;
 use websocket::{ClientBuilder, url::Url};
 use websocket::{Message, OwnedMessage};
-use std::sync::mpsc::{channel, Sender, Receiver};
+use flume::{Sender, Receiver};
 use std::thread;
 use rand::Rng;
 use serde_json::{Value, json, Map,};
+use std::time::{SystemTime, Duration};
+mod printer;
+use printer::{Printer};
+
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct JsonRpcResponse {
@@ -50,87 +54,6 @@ pub struct RpcRequest {
     pub method: String,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
-pub struct Heater {
-    #[serde(default = "default_float")]
-    pub temperature: f64,
-    #[serde(default = "default_float")]
-    pub target: f64,
-    #[serde(default = "default_float")]
-    pub power: f64,
-}
-
-pub fn default_float() -> f64 {
-    return 0.0;
-}
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
-pub struct TemperatureFan {
-    #[serde(default = "default_float")]
-    pub temperature: f64,
-    #[serde(default = "default_float")]
-    pub target: f64,
-    #[serde(default = "default_float")]
-    pub speed: f64,
-}
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
-pub struct PrinterStatus {
-    pub heaters: HashMap<String, Heater>,
-    pub temperatures_fans: HashMap<String, TemperatureFan>
-}
-
-
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
-pub struct Printer {
-    pub connected: bool,
-    pub status: PrinterStatus,
-    pub req_time: f64,
-}
-
-impl Printer {
-    fn new() -> Printer {
-        Printer {
-            connected: false,
-            req_time: 0.0,
-            status: PrinterStatus { heaters: HashMap::new(), temperatures_fans: HashMap::new() }
-        }
-    }
-
-    pub fn update(&mut self, data: serde_json::Value) {
-        if let Some(heaters) = data.get("heaters") {
-            if let Some(available_heaters) = heaters.get("available_heaters") {
-                // add heater to HashMap of heaters, with blank heaters
-                for h in available_heaters.as_array().unwrap() {
-                    let heater_name: String = serde_json::from_value(h.clone()).unwrap();
-                    if let None = self.status.heaters.get(&heater_name) {
-                        self.status.heaters.insert(serde_json::from_value(h.clone()).unwrap(), Heater { temperature: 0.0, target: 0.0, power: 0.0 });
-                    }
-                    
-                }
-            }
-        }
-        // For each heater, check if we have data to set their values
-        let mut new_heaters = self.status.heaters.clone();
-        for (k, heater) in &self.status.heaters {
-            // try to get current heater from data
-            if let Some(heater_data) = data.get(k) {
-                let mut nh = heater.clone();
-                if let Some(temp) = heater_data.get("temperature") {
-                    nh.temperature = serde_json::from_value(temp.clone()).unwrap();
-                }
-                if let Some(pow) = heater_data.get("power") {
-                    nh.power = serde_json::from_value(pow.clone()).unwrap();
-                }
-                if let Some(t) = heater_data.get("target") {
-                    nh.target = serde_json::from_value(t.clone()).unwrap();
-                }
-                new_heaters.insert(k.to_string(), nh);
-            }
-        }
-        self.status.heaters = new_heaters;
-    }
-}
-
-
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
@@ -144,7 +67,7 @@ pub struct App {
     pub printer: Printer,
     pub rx: Receiver<OwnedMessage>,
     pub tx: Sender<OwnedMessage>,
-    pub sent_messages: HashMap<String, RpcRequest>
+    pub sent_messages: HashMap<String, RpcRequest>,
 }
 
 impl Default for App {
@@ -155,10 +78,19 @@ impl Default for App {
         
         let (mut receiver, mut sender) = client.split().unwrap();
 
-        let (send_tx, send_rx) = channel();
-        let (rcv_tx, rcv_rx) = channel();
+
+        let (send_tx, send_rx) = flume::unbounded();
+        let (rcv_tx, rcv_rx) =flume::unbounded();
 
         let tx_1 = send_tx.clone();
+
+
+        // New thread to update data;
+
+        let update_loop = thread::spawn(move || {
+            
+        });
+
 
         let _send_loop = thread::spawn(move || {
             loop {
@@ -174,13 +106,7 @@ impl Default for App {
 
         let _receive_loop = thread::spawn(move || {
             // Receive loop
-            loop {
-                let rcv = thread::spawn(move || {
-                    let message = receiver.recv_message();
-                });
-
-                rcv.join();
-                
+            for message in receiver.incoming_messages() {
                 let message = match message {
                     Ok(m) => m,
                     Err(_e) => {
@@ -221,7 +147,6 @@ impl App {
     /// Handles the tick event of the terminal.
     pub fn tick(&mut self) {
         // read incoming websockets messages
-
         let message = match self.rx.try_recv() {
             Ok(m) => m,
             Err(_e) => {
@@ -322,7 +247,6 @@ impl App {
                 //println!("{:?}", request.params);
                 self.printer.update(request.params.get(0).unwrap().clone());
                 // TODO update PrinterStatus struct
-                self.printer.req_time = serde_json::from_value(request.params.get(1).unwrap().clone()).unwrap();
                 // let path = "data.json";
                 // let mut output = File::create(path).unwrap();
                 // let line = serde_json::to_string_pretty(&self.printer.status).unwrap();
