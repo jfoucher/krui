@@ -1,19 +1,25 @@
 use std::collections::HashMap;
 use std::error;
-use std::fs::File;
-use std::io::Write;
+use std::process::exit;
 use websocket::ws::dataframe::DataFrame;
 use websocket::{ClientBuilder, url::Url};
-use websocket::{Message, OwnedMessage};
+use websocket::OwnedMessage;
 use flume::{Sender, Receiver};
 use std::thread;
 use rand::Rng;
-use serde_json::{Value, json, Map,};
-use std::time::{SystemTime, Duration};
-mod printer;
-use printer::{Printer};
+use serde_json::{Value, json};
 
+use crate::printer::Printer;
 
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+pub enum Tab {
+    Main,
+    Help,
+    Toolhead,
+    ToolheadHelp,
+    Extruder,
+    ExtruderHelp,
+}
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct JsonRpcResponse {
     jsonrpc: String,
@@ -53,6 +59,20 @@ impl JsonRpcClientRequest {
 pub struct RpcRequest {
     pub method: String,
 }
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq, Hash)]
+pub struct TabsState {
+    pub titles: Vec<String>,
+    pub index: usize,
+}
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+pub struct HistoryItem {
+    pub filename: String,
+    pub status: String,
+    pub end_time : f64,
+    pub filament_used: f64,
+    pub estimated_time: f64,
+    pub total_duration: f64
+}
 
 
 /// Application result type.
@@ -68,6 +88,8 @@ pub struct App {
     pub rx: Receiver<OwnedMessage>,
     pub tx: Sender<OwnedMessage>,
     pub sent_messages: HashMap<String, RpcRequest>,
+    pub current_tab: Tab,
+    pub history: HashMap<String, HistoryItem>,
 }
 
 impl Default for App {
@@ -84,18 +106,10 @@ impl Default for App {
 
         let tx_1 = send_tx.clone();
 
-
-        // New thread to update data;
-
-        let update_loop = thread::spawn(move || {
-            
-        });
-
-
         let _send_loop = thread::spawn(move || {
             loop {
                 // Send loop
-                match send_rx.try_recv() {
+                match send_rx.recv() {
                     Ok(m) => {
                         let _ = sender.send_message(&m);
                     },
@@ -110,7 +124,7 @@ impl Default for App {
                 let message = match message {
                     Ok(m) => m,
                     Err(_e) => {
-                        OwnedMessage::Binary(vec![])
+                        OwnedMessage::Close(None)
                     }
                 };
                 match message {
@@ -120,9 +134,7 @@ impl Default for App {
                     OwnedMessage::Ping(_) => {
                         let _ = tx_1.send(OwnedMessage::Pong(vec![]));
                     },
-                    _ => {
-                        println!("not a text message {:?}", message);
-                    },
+                    _ => {},
                 }
             }
         });
@@ -134,6 +146,8 @@ impl Default for App {
             tx: send_tx,
             rx: rcv_rx,
             sent_messages: HashMap::new(),
+            current_tab: Tab::Main,
+            history: HashMap::new(),
         }
     }
 }
@@ -195,17 +209,24 @@ impl App {
     pub fn init(&mut self) {
         self.send_message(String::from("server.info"), serde_json::Value::Object(serde_json::Map::new()));
         self.send_message(String::from("printer.objects.list"), serde_json::Value::Object(serde_json::Map::new()));
+        self.send_message(String::from("server.history.list"), json!({
+            "limit": 100,
+            "start": 0,
+            "since": 0,
+            "order": "desc"
+        }));
     }
 
     pub fn handle_response(&mut self, response: JsonRpcResponse) {
         // find the original method id from our hashmap
+        
         let method = match self.sent_messages.get(&response.id) {
             Some(m) => {
                 m.method.clone()
             }
             None => "".to_string()
         };
-
+        
         if method.len() > 0 {
             // Remove from hashmap
             self.sent_messages.remove(&response.id);
@@ -226,13 +247,60 @@ impl App {
 
                     self.send_message("printer.objects.query".to_string(), serde_json::Value::Object(params.clone()));
                     self.send_message("printer.objects.subscribe".to_string(), serde_json::Value::Object(params));
-                },
+                }
+                "printer.emergency_stop" => {
+                    self.printer.connected = false;
+                    self.printer.stats.state = "shutdown".to_string();
+                }
                 "printer.objects.query" => {
                     self.printer.update(response.result.get("status").unwrap().clone());
                 }
-                _ => {
-                    //println!("not implemented")
-                }
+                "server.history.list" => {
+                    if let Some(jobs) = response.result.get("jobs") {
+
+                        if jobs.is_array() {
+                            for job in jobs.as_array().unwrap() {
+                                // println!("{:?}", job);
+                                if let Some(filename) = job.get("filename") {
+                                    let filename = filename.as_str().unwrap().to_string();
+                                    if let Some(_) = self.history.get(&filename) {
+                                        continue;
+                                    }
+                                    let mut h = HistoryItem {
+                                        filename: filename.clone(),
+                                        status: "".to_string(),
+                                        end_time: 0.0,
+                                        estimated_time: 0.0,
+                                        total_duration: 0.0,
+                                        filament_used: 0.0,
+                                    };
+                                    if let Some(status) = job.get("status") {
+                                        h.status = status.as_str().unwrap().to_string();
+                                    }
+                                    if let Some(end_time) = job.get("end_time") {
+                                        h.end_time = end_time.as_f64().unwrap();
+                                    }
+                                    if let Some(total_duration) = job.get("total_duration") {
+                                        h.total_duration = total_duration.as_f64().unwrap();
+                                    }
+                                    if let Some(filament_used) = job.get("filament_used") {
+                                        h.filament_used = filament_used.as_f64().unwrap();
+                                    }
+
+                                    if let Some(metadata) = job.get("metadata") {
+                                        if let Some(estimated_time) = metadata.get("estimated_time") {
+                                            h.estimated_time = estimated_time.as_f64().unwrap();
+                                        }
+                                        
+                                    }
+                                    self.history.insert(filename, h);
+                                }
+                            }
+                        }
+                    }
+                },
+
+                _ => {}
             }
         }
     }
@@ -241,8 +309,17 @@ impl App {
         let method = request.method.as_str();
 
         match method {
-            "notify_klippy_shutdown" => self.printer.connected = false,
-            "notify_klippy_ready" => self.printer.connected = true,
+            "notify_klippy_shutdown" => {
+                self.printer.connected = false;
+                self.printer.stats.state = "shutdown".to_string();
+                self.data = "SHUTDOWN".to_string();
+                self.quit();
+            },
+            "notify_klippy_ready" => {
+                self.printer.connected = true;
+                self.init();
+            },
+            "notify_proc_stat_update" => {},
             "notify_status_update" => {
                 //println!("{:?}", request.params);
                 self.printer.update(request.params.get(0).unwrap().clone());
@@ -252,10 +329,12 @@ impl App {
                 // let line = serde_json::to_string_pretty(&self.printer.status).unwrap();
                 // write!(output, "{}", line);
                
+            },
+            "notify_gcode_response" => {
+                self.data = format!("notify_gcode_response params {}", request.params);
+                // self.quit();
             }
-            _ => {
-                //println!("Method {} not implement", method)
-            }
+            _ => {}
         }
     }
 
@@ -277,12 +356,9 @@ impl App {
         }
         
 
-        //println!("sending json message {:?}", m);
-        //self.data = m.clone();
+        // println!("sending json message {:?}", m);
         let _ = self.tx.send(OwnedMessage::Text(m));
 
-
-        
     }
 
     /// Set running to false to quit the application.
@@ -290,13 +366,6 @@ impl App {
         self.running = false;
     }
 
-    pub fn increment_counter(&mut self) {
-        
-    }
-
-    pub fn decrement_counter(&mut self) {
-        
-    }
     pub fn get_data(&mut self) -> &str {
         return self.data.as_str();
     }

@@ -1,4 +1,6 @@
+
 use std::collections::HashMap;
+
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct Toolhead {
@@ -65,7 +67,7 @@ pub struct Printer {
     pub status: PrinterStatus,
     pub stats: PrintStats,
     pub toolhead: Toolhead,
-
+    pub sysload: f64,
 }
 
 impl Printer {
@@ -85,7 +87,8 @@ impl Printer {
                 }, 
                 homed: Homed { x: false, y: false, z: false, qgl: false },
                 fan: Fan { speed: 0.0 }
-            }
+            },
+            sysload: 0.0,
         }
     }
 
@@ -157,10 +160,13 @@ impl Printer {
 
         // Set printer state
         let mut stats = self.stats.clone();
-        if let Some(print_stats) = data.get("print_stats") {
+        if let Some(print_stats) = data.get("webhooks") {
             if let Some(state) = print_stats.get("state") {
                 if let Some(s) = state.as_str() {
-                    stats.state = String::from(s);
+                    stats.state = s.to_string();
+                    if state == "shutdown" || state == "error" {
+                        self.connected = false;
+                    }
                 }
             }
         }
@@ -197,6 +203,19 @@ impl Printer {
             }
         }
         self.toolhead.fan = fan;
+        // Update sys load
+
+        if let Some(f) = data.get("system_stats") {
+            if let Some(s) = f.get("sysload") {
+                if let Some(load) = s.as_f64() {
+                    self.sysload = load;
+                }
+            }
+        }
+        if let Some(c) = data.get("connected") {
+            self.connected = c.as_bool().unwrap();
+        }
+
     }
 }
 

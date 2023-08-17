@@ -1,4 +1,4 @@
-use crate::app::{App, AppResult};
+use crate::app::{App, AppResult, Tab};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Handles the key events and updates the state of [`App`].
@@ -15,12 +15,37 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
             }
         }
         // Counter handlers
-        KeyCode::Right => {
-            app.increment_counter();
+        KeyCode::F(1) => {
+            app.current_tab = match app.current_tab {
+                Tab::Main => Tab::Help,
+                Tab::Help => Tab::Main,
+                Tab::Toolhead => Tab::ToolheadHelp,
+                Tab::ToolheadHelp => Tab::Toolhead,
+                Tab::Extruder => Tab::ExtruderHelp,
+                Tab::ExtruderHelp => Tab::Extruder,
+                _ => Tab::Main
+            }
         }
-        KeyCode::Left => {
-            app.decrement_counter();
+        KeyCode::F(2) => {
+            app.quit();
         }
+        KeyCode::F(3) => {
+            app.current_tab = match app.current_tab {
+                Tab::Main => Tab::Toolhead,
+                _ => Tab::Main
+            }
+        }
+
+        KeyCode::F(4) => {
+            app.current_tab = match app.current_tab {
+                Tab::Main => Tab::Extruder,
+                _ => Tab::Main
+            }
+        }
+        KeyCode::F(10) => {
+            app.send_message("printer.emergency_stop".to_string(), serde_json::Value::Object(serde_json::Map::new()))
+        }
+        
         // Other handlers you could add here.
         _ => {}
     }

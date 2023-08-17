@@ -11,6 +11,8 @@ use std::io;
 use tui::backend::CrosstermBackend;
 use tui::Terminal;
 
+
+
 fn main() -> AppResult<()> {
     // Create an application.
     let mut app = App::new();
@@ -38,5 +40,6 @@ fn main() -> AppResult<()> {
 
     // Exit the user interface.
     tui.exit()?;
+    println!("not implemented {:?}", app.data);
     Ok(())
 }
