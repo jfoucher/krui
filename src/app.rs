@@ -3,13 +3,14 @@ use std::error;
 use std::process::exit;
 use websocket::ws::dataframe::DataFrame;
 use websocket::{ClientBuilder, url::Url};
-use websocket::OwnedMessage;
+use websocket::{OwnedMessage, WebSocketError};
 use flume::{Sender, Receiver};
 use std::thread;
 use rand::Rng;
 use serde_json::{Value, json};
 
 use crate::printer::Printer;
+
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub enum Tab {
@@ -31,7 +32,7 @@ pub struct JsonRpcResponse {
 pub struct JsonRpcServerRequest {
     jsonrpc: String,
     pub method: String,
-    pub params: Value,
+    pub params: Option<Value>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
@@ -111,7 +112,8 @@ impl Default for App {
                 // Send loop
                 match send_rx.recv() {
                     Ok(m) => {
-                        let _ = sender.send_message(&m);
+                        let a = sender.send_message(&m);
+                        log::info!("sent message {:?}", a);
                     },
                     Err(_e) => {}
                 };
@@ -124,6 +126,7 @@ impl Default for App {
                 let message = match message {
                     Ok(m) => m,
                     Err(_e) => {
+                        log::info!(" websocket error {:?}", _e);
                         OwnedMessage::Close(None)
                     }
                 };
@@ -164,6 +167,7 @@ impl App {
         let message = match self.rx.try_recv() {
             Ok(m) => m,
             Err(_e) => {
+                log::debug!("Receive error {:?}", _e);
                 return;
             }
         };
@@ -173,6 +177,7 @@ impl App {
             let s: String = match String::from_utf8(v) {
                 Ok(m) => m,
                 Err(_e) => {
+                    log::debug!("decode error {:?}", _e);
                     return;
                 }
             };
@@ -181,6 +186,7 @@ impl App {
             let response: Option<JsonRpcResponse> = match serde_json::from_str(s.as_str()) {
                 Ok(m) => Some(m),
                 Err(_e) => {
+                    log::debug!("not a response error {:?}", _e);
                     None
                 }
             };
@@ -192,6 +198,7 @@ impl App {
                 let request: Option<JsonRpcServerRequest> = match serde_json::from_str(s.as_str()) {
                     Ok(m) => Some(m),
                     Err(_e) => {
+                        log::debug!("not a server request error {:?}", _e);
                         None
                     }
                 };
@@ -199,14 +206,18 @@ impl App {
                     self.handle_request(request.unwrap());
                 }
             }
-            
-            
         }
         
         //println!("ws message: {:?}", message);
     }
 
     pub fn init(&mut self) {
+        self.send_message(String::from("server.connection.identify"), json!({
+            "client_name": "Krui",
+            "version":	"0.0.1",
+            "type":	"desktop",
+            "url":	"https://github.com/jfoucher/krui"
+        }));
         self.send_message(String::from("server.info"), serde_json::Value::Object(serde_json::Map::new()));
         self.send_message(String::from("printer.objects.list"), serde_json::Value::Object(serde_json::Map::new()));
         self.send_message(String::from("server.history.list"), json!({
@@ -233,8 +244,17 @@ impl App {
 
             match method.as_str() {
                 "server.info"=> {
-                    //self.data = format!("{}\n{:?}",self.data, response.result)
-                    self.printer.connected = serde_json::from_value(response.result["klippy_connected"].clone()).unwrap();
+                    log::info!("server.info {:?}", response.result);
+                    self.printer.connected = false;
+                    if let Some(klc) = response.result.get("klippy_connected") {
+                        if klc.as_bool().unwrap() {
+                            if let Some(kls) = response.result.get("klippy_state") {
+                                if kls.as_str().unwrap() == "ready" {
+                                    self.printer.connected = true;
+                                }
+                            }
+                        }
+                    }
                 }
                 "printer.objects.list" => {
                     let json_objects: Vec<String> = serde_json::from_value(response.result["objects"].clone()).unwrap();
@@ -249,8 +269,8 @@ impl App {
                     self.send_message("printer.objects.subscribe".to_string(), serde_json::Value::Object(params));
                 }
                 "printer.emergency_stop" => {
-                    self.printer.connected = false;
-                    self.printer.stats.state = "shutdown".to_string();
+                    // self.printer.connected = false;
+                    // self.printer.stats.state = "shutdown".to_string();
                 }
                 "printer.objects.query" => {
                     self.printer.update(response.result.get("status").unwrap().clone());
@@ -310,19 +330,20 @@ impl App {
 
         match method {
             "notify_klippy_shutdown" => {
+                log::info!("notify_klippy_shutdown");
                 self.printer.connected = false;
-                self.printer.stats.state = "shutdown".to_string();
-                self.data = "SHUTDOWN".to_string();
-                self.quit();
             },
             "notify_klippy_ready" => {
+                log::info!("notify_klippy_ready");
                 self.printer.connected = true;
                 self.init();
             },
             "notify_proc_stat_update" => {},
             "notify_status_update" => {
-                //println!("{:?}", request.params);
-                self.printer.update(request.params.get(0).unwrap().clone());
+                if let Some(params) = request.params {
+                    self.printer.update(params.get(0).unwrap().clone());
+                }
+                
                 // TODO update PrinterStatus struct
                 // let path = "data.json";
                 // let mut output = File::create(path).unwrap();
@@ -331,7 +352,7 @@ impl App {
                
             },
             "notify_gcode_response" => {
-                self.data = format!("notify_gcode_response params {}", request.params);
+                self.data = format!("notify_gcode_response params {:?}", request.params);
                 // self.quit();
             }
             _ => {}

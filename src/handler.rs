@@ -1,5 +1,6 @@
 use crate::app::{App, AppResult, Tab};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use serde_json::json;
 
 /// Handles the key events and updates the state of [`App`].
 pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
@@ -43,7 +44,13 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
             }
         }
         KeyCode::F(10) => {
-            app.send_message("printer.emergency_stop".to_string(), serde_json::Value::Object(serde_json::Map::new()))
+            if app.printer.connected {
+                app.send_message("printer.emergency_stop".to_string(), serde_json::Value::Object(serde_json::Map::new()))
+            } else {
+                app.send_message("printer.gcode.script".to_string(), json!({"script": "FIRMWARE_RESTART"}));
+                app.printer.stats.state = "starting".to_string();
+            }
+            
         }
         
         // Other handlers you could add here.

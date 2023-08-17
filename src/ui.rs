@@ -92,7 +92,8 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         "printing" => (Color::Green, Color::White),
         "paused"   => (Color::Gray, Color::LightCyan),
         "complete"  => (Color::LightGreen, Color::Black),
-        "cancelled" => (Color::Gray, Color::White),
+        "cancelled" => (Color::Gray, Color::Black),
+        "starting" => (Color::Gray, Color::Black),
         "error"     => (Color::Red, Color::White),
         "shutdown"     => (Color::Red, Color::White),
         _ => (Color::Black, Color::White),
@@ -135,7 +136,8 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         );
 
     frame.render_widget(sl, header[1]);
-    
+
+
     match app.current_tab {
         Tab::Main => draw_main_tab(frame, app, chunks[1]),
         Tab::Help => draw_main_help(frame, app, chunks[1]),
@@ -144,6 +146,21 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         _ => {}
     }
 
+    if app.printer.connected == false && app.printer.stats.state == "shutdown".to_string() {
+        let sl = Paragraph::new(format!("{: ^50}{: <450}", format!("Klipper reports: {}", app.printer.stats.state), format!("{}Press F10 to restart the firmware", app.printer.stats.state_message)))
+        .block(Block::default()
+            .style(Style::default().bg(Color::White).fg(Color::Black))
+            
+            .borders(Borders::ALL)
+            .border_type(BorderType::Thick)
+        )
+        .wrap(Wrap {trim: false})
+        ;
+
+        frame.render_widget(sl, Rect::new((frame.size().width - 50) / 2, (frame.size().height - 12) / 2, 50, 12));
+    }
+
+    
     
 
 }
@@ -249,7 +266,7 @@ where
         Button::new("Help".to_string(), Some("1".to_string())),
         Button::new("Quit".to_string(), Some("2".to_string())),
         Button::new("Close".to_string(), Some("3".to_string())),
-        Button::new("STOP".to_string(), Some("10".to_string())),
+        Button::new(if app.printer.connected {"STOP".to_string()} else {"Restart".to_string()}, Some("10".to_string())),
     ];
     draw_footer(f, app, chunks[1], buttons);
 
@@ -342,7 +359,7 @@ where
         Button::new("Quit".to_string(), Some("2".to_string())),
         Button::new("Toolhead".to_string(), Some("3".to_string())),
         Button::new("Extruder".to_string(), Some("4".to_string())),
-        Button::new("STOP".to_string(), Some("10".to_string())),
+        Button::new(if app.printer.connected {"STOP".to_string()} else {"Restart".to_string()}, Some("10".to_string())),
     ];
     draw_footer(f, app, chunks[2], buttons);
     

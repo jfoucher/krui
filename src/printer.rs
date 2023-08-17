@@ -58,7 +58,7 @@ pub struct PrinterStatus {
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct PrintStats {
     pub state: String,
-
+    pub state_message: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
@@ -78,7 +78,7 @@ impl Printer {
                 heaters: HashMap::new(),
                 temperature_fans: HashMap::new()
             },
-            stats: PrintStats { state: String::from("unknown") },
+            stats: PrintStats { state: String::from("unknown"), state_message: "".to_string() },
             toolhead: Toolhead {
                 position: Position {
                     x: 0.0,
@@ -160,13 +160,29 @@ impl Printer {
 
         // Set printer state
         let mut stats = self.stats.clone();
+        // if let Some(print_stats) = data.get("print_stats") {
+        //     log::info!("{:?}", print_stats);
+        //     if let Some(state) = print_stats.get("state") {
+        //         if let Some(s) = state.as_str() {
+        //             stats.state = s.to_string();
+        //         }
+        //     }
+        //     if let Some(state_msg) = print_stats.get("state_message") {
+        //         if let Some(s) = state_msg.as_str() {
+        //             stats.state_message = s.to_string();
+        //         }
+        //     }
+        // } else 
         if let Some(print_stats) = data.get("webhooks") {
+            log::info!("{:?}", print_stats);
             if let Some(state) = print_stats.get("state") {
                 if let Some(s) = state.as_str() {
                     stats.state = s.to_string();
-                    if state == "shutdown" || state == "error" {
-                        self.connected = false;
-                    }
+                }
+            }
+            if let Some(state_msg) = print_stats.get("state_message") {
+                if let Some(s) = state_msg.as_str() {
+                    stats.state_message = s.to_string();
                 }
             }
         }
