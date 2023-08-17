@@ -126,6 +126,8 @@ impl App {
             Ok(c) => c,
             Err(_) => {
                 self.ws_connected = false;
+                self.printer.connected = false;
+                self.printer.stats.state = "error".to_string();
                 return;
             },
         };
@@ -171,7 +173,16 @@ impl App {
                     Ok(m) => m,
                     Err(e) => {
                         match e {
-                            WebSocketError::NoDataAvailable => {},
+                            WebSocketError::NoDataAvailable => {
+                                log::error!("Websocket error {:?}", e);
+                                // Kill sending thread
+                                let _ = tx_1.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                // Tell main thread that the connection has closed
+                                let _ = rcv_tx.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                // exit loop and terminate thread
+                                log::info!("exiting receiving thread");
+                                break;
+                            },
                             WebSocketError::IoError(err) => {
                                 log::error!("Websocket error {:?}", err);
                                 if err.kind() == ErrorKind::ConnectionReset {
@@ -286,8 +297,10 @@ impl App {
         log::info!("App init start");
         self.printer.connected = false;
         self.printer.stats.state = "error".to_string();
+
         self.rx = None;
         self.tx = None;
+
         self.start();
         self.send_message(String::from("server.connection.identify"), json!({
             "client_name": "Krui",
