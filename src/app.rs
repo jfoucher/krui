@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::error;
+use std::io::{ErrorKind, Write};
 use std::process::exit;
+use std::time::Duration;
 use websocket::ws::dataframe::DataFrame;
 use websocket::{ClientBuilder, url::Url};
-use websocket::{OwnedMessage, WebSocketError};
+use websocket::{OwnedMessage, WebSocketError, CloseData};
 use flume::{Sender, Receiver};
 use std::thread;
 use rand::Rng;
 use serde_json::{Value, json};
+
 
 use crate::printer::Printer;
 
@@ -86,34 +89,75 @@ pub struct App {
     pub running: bool,
     pub data: String,
     pub printer: Printer,
-    pub rx: Receiver<OwnedMessage>,
-    pub tx: Sender<OwnedMessage>,
+    pub rx: Option<Receiver<OwnedMessage>>,
+    pub tx: Option<Sender<OwnedMessage>>,
     pub sent_messages: HashMap<String, RpcRequest>,
     pub current_tab: Tab,
     pub history: HashMap<String, HistoryItem>,
+    pub ws_connected: bool,
 }
 
 impl Default for App {
     fn default() -> Self {
+        Self {
+            running: true,
+            data: String::from(""),
+            printer: Printer::new(),
+            tx: None,
+            rx: None,
+            sent_messages: HashMap::new(),
+            current_tab: Tab::Main,
+            history: HashMap::new(),
+            ws_connected: false,
+        }
+    }
+}
+
+impl App {
+    /// Constructs a new instance of [`App`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn start(&mut self) {
         let url = Url::parse(CONNECTION).unwrap();
         let mut builder = ClientBuilder::from_url(&url);
-        let client = builder.connect_insecure().unwrap();
-        
+        let client = match builder.connect_insecure() {
+            Ok(c) => c,
+            Err(_) => {
+                self.ws_connected = false;
+                return;
+            },
+        };
+        let stream = client.stream_ref();
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+        let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
         let (mut receiver, mut sender) = client.split().unwrap();
 
-
+        
         let (send_tx, send_rx) = flume::unbounded();
         let (rcv_tx, rcv_rx) =flume::unbounded();
 
+    
         let tx_1 = send_tx.clone();
+        self.tx = Some(send_tx);
+        self.rx = Some(rcv_rx);
+        self.ws_connected = true;
 
         let _send_loop = thread::spawn(move || {
             loop {
                 // Send loop
                 match send_rx.recv() {
                     Ok(m) => {
-                        let a = sender.send_message(&m);
-                        log::info!("sent message {:?}", a);
+                        log::debug!("sending message {:?}", m);
+                        if m.is_data() {
+                            let _ = sender.send_message(&m);
+                        } else if m.is_close() {
+                            // Tell the server to close the connection
+                            let _ = sender.send_message(&m);
+                            log::info!("exiting sending thread");
+                            break;
+                        }
                     },
                     Err(_e) => {}
                 };
@@ -125,8 +169,34 @@ impl Default for App {
             for message in receiver.incoming_messages() {
                 let message = match message {
                     Ok(m) => m,
-                    Err(_e) => {
-                        log::info!(" websocket error {:?}", _e);
+                    Err(e) => {
+                        match e {
+                            WebSocketError::NoDataAvailable => {},
+                            WebSocketError::IoError(err) => {
+                                log::error!("Websocket error {:?}", err);
+                                if err.kind() == ErrorKind::ConnectionReset {
+                                    // Kill sending thread
+                                    let _ = tx_1.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                    // Tell main thread that the connection has closed
+                                    let _ = rcv_tx.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                    // exit loop and terminate thread
+                                    log::info!("exiting receiving thread");
+                                    break;
+                                } else if err.kind() == ErrorKind::WouldBlock {
+                                    // Kill sending thread
+                                    let _ = tx_1.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                    // Tell main thread that the connection has closed
+                                    let _ = rcv_tx.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                    // exit loop and terminate thread
+                                    log::info!("exiting receiving thread");
+                                    break;
+                                }
+                            }
+                            _ => {
+                                log::error!("Websocket error {:?}", e);
+                            }
+                        };
+                        
                         OwnedMessage::Close(None)
                     }
                 };
@@ -141,77 +211,84 @@ impl Default for App {
                 }
             }
         });
-
-        Self {
-            running: true,
-            data: String::from(""),
-            printer: Printer::new(),
-            tx: send_tx,
-            rx: rcv_rx,
-            sent_messages: HashMap::new(),
-            current_tab: Tab::Main,
-            history: HashMap::new(),
-        }
-    }
-}
-
-impl App {
-    /// Constructs a new instance of [`App`].
-    pub fn new() -> Self {
-        Self::default()
+        
     }
 
     /// Handles the tick event of the terminal.
     pub fn tick(&mut self) {
         // read incoming websockets messages
-        let message = match self.rx.try_recv() {
-            Ok(m) => m,
-            Err(_e) => {
-                log::debug!("Receive error {:?}", _e);
-                return;
-            }
-        };
-
-        if message.is_data() {
-            let v = message.take_payload();
-            let s: String = match String::from_utf8(v) {
+        if let Some(rx) = &self.rx {
+            let message = match rx.try_recv() {
                 Ok(m) => m,
                 Err(_e) => {
-                    log::debug!("decode error {:?}", _e);
+                    log::debug!("Receive error {:?}", _e);
                     return;
                 }
             };
 
-            // try to parse as a response to one of our requests
-            let response: Option<JsonRpcResponse> = match serde_json::from_str(s.as_str()) {
-                Ok(m) => Some(m),
-                Err(_e) => {
-                    log::debug!("not a response error {:?}", _e);
-                    None
-                }
-            };
 
-            if response.is_some() {
-                // This is a response to one of our requests, handle it
-                self.handle_response(response.unwrap());
-            } else {
-                let request: Option<JsonRpcServerRequest> = match serde_json::from_str(s.as_str()) {
+            if message.is_close() {
+                // Closing message, means we lost connection and have to restart
+                self.ws_connected = false;
+                self.printer.connected = false;
+                self.printer.stats.state = "error".to_string();
+                self.init();
+                return;
+            }
+    
+            if message.is_data() {
+                let v = message.take_payload();
+                let s: String = match String::from_utf8(v) {
+                    Ok(m) => m,
+                    Err(_e) => {
+                        log::debug!("decode error {:?}", _e);
+                        return;
+                    }
+                };
+    
+                // try to parse as a response to one of our requests
+                let response: Option<JsonRpcResponse> = match serde_json::from_str(s.as_str()) {
                     Ok(m) => Some(m),
                     Err(_e) => {
-                        log::debug!("not a server request error {:?}", _e);
+                        log::debug!("not a response error {:?}", _e);
                         None
                     }
                 };
-                if request.is_some() {
-                    self.handle_request(request.unwrap());
+    
+                if response.is_some() {
+                    // This is a response to one of our requests, handle it
+                    self.handle_response(response.unwrap());
+                } else {
+                    let request: Option<JsonRpcServerRequest> = match serde_json::from_str(s.as_str()) {
+                        Ok(m) => Some(m),
+                        Err(_e) => {
+                            log::debug!("not a server request error {:?}", _e);
+                            None
+                        }
+                    };
+                    if request.is_some() {
+                        self.handle_request(request.unwrap());
+                    }
                 }
             }
+        } else {
+            if self.ws_connected == false {
+                self.init();
+                return;
+            }
         }
+        
         
         //println!("ws message: {:?}", message);
     }
 
     pub fn init(&mut self) {
+        log::info!("App init start");
+        self.printer.connected = false;
+        self.printer.stats.state = "error".to_string();
+        self.rx = None;
+        self.tx = None;
+        self.start();
         self.send_message(String::from("server.connection.identify"), json!({
             "client_name": "Krui",
             "version":	"0.0.1",
@@ -226,6 +303,7 @@ impl App {
             "since": 0,
             "order": "desc"
         }));
+        log::info!("App init done");
     }
 
     pub fn handle_response(&mut self, response: JsonRpcResponse) {
@@ -244,7 +322,7 @@ impl App {
 
             match method.as_str() {
                 "server.info"=> {
-                    log::info!("server.info {:?}", response.result);
+                    log::debug!("server.info {:?}", response.result);
                     self.printer.connected = false;
                     if let Some(klc) = response.result.get("klippy_connected") {
                         if klc.as_bool().unwrap() {
@@ -330,11 +408,11 @@ impl App {
 
         match method {
             "notify_klippy_shutdown" => {
-                log::info!("notify_klippy_shutdown");
+                log::debug!("notify_klippy_shutdown");
                 self.printer.connected = false;
             },
             "notify_klippy_ready" => {
-                log::info!("notify_klippy_ready");
+                log::debug!("notify_klippy_ready");
                 self.printer.connected = true;
                 self.init();
             },
@@ -377,9 +455,9 @@ impl App {
         }
         
 
-        // println!("sending json message {:?}", m);
-        let _ = self.tx.send(OwnedMessage::Text(m));
-
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(OwnedMessage::Text(m));
+        }
     }
 
     /// Set running to false to quit the application.

@@ -55,6 +55,6 @@ fn main() -> AppResult<()> {
 
     // Exit the user interface.
     tui.exit()?;
-    println!("not implemented {:?}", app.data);
+
     Ok(())
 }
