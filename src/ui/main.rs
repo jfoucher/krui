@@ -151,6 +151,7 @@ where
         Button::new("Quit".to_string(), Some("2".to_string())),
         Button::new("Toolhead".to_string(), Some("3".to_string())),
         Button::new("Extruder".to_string(), Some("4".to_string())),
+        Button::new("Console".to_string(), Some("5".to_string())),
         Button::new(if app.printer.connected {"STOP".to_string()} else {"Restart".to_string()}, Some("10".to_string())),
     ];
     header::draw_footer(f, chunks[2], buttons);

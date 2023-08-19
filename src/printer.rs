@@ -1,6 +1,7 @@
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
+use chrono::DateTime;
 use log4rs::append::rolling_file::LogFile;
 
 
@@ -52,7 +53,13 @@ pub struct TemperatureFan {
     #[serde(default = "default_float")]
     pub speed: f64,
 }
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GCodeLine {
+    pub timestamp: DateTime<chrono::Local>,
+    pub content: String,
+}
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrinterStatus {
     pub heaters: HashMap<String, Heater>,
     pub temperature_fans: HashMap<String, TemperatureFan>,
@@ -60,9 +67,10 @@ pub struct PrinterStatus {
     pub state_message: String,
     pub stepper_enable: bool,
     pub filament_switch: bool,
+    pub gcodes: Vec<GCodeLine>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Printer {
     pub connected: bool,
     pub status: PrinterStatus,
@@ -81,6 +89,7 @@ impl Printer {
                 state_message: "".to_string(),
                 stepper_enable: false,
                 filament_switch: false,
+                gcodes: vec![],
             },
             toolhead: Toolhead {
                 position: Position {
@@ -163,7 +172,6 @@ impl Printer {
 
         let mut status = self.status.clone();
         if let Some(print_stats) = data.get("webhooks") {
-            log::info!("{:?}", print_stats);
             if let Some(state) = print_stats.get("state") {
                 if let Some(s) = state.as_str() {
                     status.state = s.to_string();
@@ -175,6 +183,7 @@ impl Printer {
                 }
             }
         }
+        // TODO make this optional
         if let Some(ks) = data.as_object() {
             for (k, v) in ks {
                 if k.contains("filament_switch_sensor") {

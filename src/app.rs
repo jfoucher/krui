@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error;
 use std::io::ErrorKind;
 use std::net::TcpStream;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use websocket::sync::Client;
 use websocket::ws::dataframe::DataFrame;
 use websocket::{ClientBuilder, url::Url};
@@ -11,6 +11,7 @@ use flume::{Sender, Receiver};
 use std::thread::{self, JoinHandle};
 use rand::Rng;
 use serde_json::{Value, json};
+use chrono::prelude::*;
 
 
 use crate::printer::Printer;
@@ -24,6 +25,8 @@ pub enum Tab {
     ToolheadHelp,
     Extruder,
     ExtruderHelp,
+    Console,
+    ConsoleHelp,
 }
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct JsonRpcResponse {
@@ -137,7 +140,8 @@ impl App {
                         let _ = tx.send(c);
                         break;
                     },
-                    Err(_) => {
+                    Err(e) => {
+                        log::info!("Client connect fail : {:?}", e);
                         continue;
                     },
                 };
@@ -173,8 +177,12 @@ impl App {
                         } else if m.is_close() {
                             // Tell the server to close the connection
                             let _ = sender.send_message(&m);
-                            log::info!("exiting sending thread");
-                            break;
+                            let mut d2: Vec<u8> = vec![0, 1];
+                            d2.append(&mut "reset".to_string().into_bytes());
+                            if m.take_payload() == d2 {
+                                log::info!("exiting sending thread");
+                                break;
+                            }
                         }
                     },
                     Err(_e) => {}
@@ -185,6 +193,7 @@ impl App {
 
         let _receive_loop = thread::spawn(move || {
             // Receive loop
+            let close_message = OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string())));
             for message in receiver.incoming_messages() {
                 let message = match message {
                     Ok(m) => m,
@@ -193,9 +202,9 @@ impl App {
                             WebSocketError::NoDataAvailable => {
                                 log::error!("Websocket error {:?}", e);
                                 // Kill sending thread
-                                let _ = tx_1.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                let _ = tx_1.send(close_message.clone());
                                 // Tell main thread that the connection has closed
-                                let _ = rcv_tx.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                let _ = rcv_tx.send(close_message);
                                 // exit loop and terminate thread
                                 log::info!("exiting receiving thread");
                                 break;
@@ -204,17 +213,17 @@ impl App {
                                 log::error!("Websocket error {:?}", err);
                                 if err.kind() == ErrorKind::ConnectionReset {
                                     // Kill sending thread
-                                    let _ = tx_1.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                    let _ = tx_1.send(close_message.clone());
                                     // Tell main thread that the connection has closed
-                                    let _ = rcv_tx.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                    let _ = rcv_tx.send(close_message);
                                     // exit loop and terminate thread
                                     log::info!("exiting receiving thread");
                                     break;
                                 } else if err.kind() == ErrorKind::WouldBlock {
                                     // Kill sending thread
-                                    let _ = tx_1.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                    let _ = tx_1.send(close_message.clone());
                                     // Tell main thread that the connection has closed
-                                    let _ = rcv_tx.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+                                    let _ = rcv_tx.send(close_message);
                                     // exit loop and terminate thread
                                     log::info!("exiting receiving thread");
                                     break;
@@ -256,16 +265,22 @@ impl App {
 
 
             if message.is_close() {
+                // todo make sure 
                 // Closing message, means we lost connection and have to restart
-                self.ws_connected = false;
-                self.starting = true;
-                self.printer.connected = false;
-                self.printer.status.state = "error".to_string();
-                self.init();
-                return;
-            }
-    
-            if message.is_data() {
+                let d = message.take_payload();
+                
+                let mut d2: Vec<u8> = vec![0, 1];
+                d2.append(&mut "reset".to_string().into_bytes());
+
+                if d == d2{
+                    self.ws_connected = false;
+                    self.starting = true;
+                    self.printer.connected = false;
+                    self.printer.status.state = "error".to_string();
+                    self.init();
+                    return;
+                } 
+            } else if message.is_data() {
                 let v = message.take_payload();
                 let s: String = match String::from_utf8(v) {
                     Ok(m) => m,
@@ -325,14 +340,12 @@ impl App {
         let _ = self.generate_client(client_tx);
         // wait for client to be ready
         self.try_init();
-        
-
-        log::info!("App init done");
     }
 
     fn try_init(&mut self) {
         match self.client_rx.as_ref().expect("No client").try_recv() {
             Ok(c) => {
+                log::info!("Client connected");
                 self.start(c);
 
                 self.send_message(String::from("server.connection.identify"), json!({
@@ -351,7 +364,9 @@ impl App {
                 }));
                 self.starting = false;
             },
-            Err(_) => {},
+            Err(e) => {
+                // log::info!("Client connection error {:?}", e);
+            },
         };
     }
 
@@ -479,8 +494,23 @@ impl App {
                
             },
             "notify_gcode_response" => {
-                self.data = format!("notify_gcode_response params {:?}", request.params);
+                // self.printer.status.gcodes.push(value);
+                log::info!("notify_gcode_response params {:?}", request.params);
                 // self.quit();
+                if let Some(p) = request.params {
+                    if let Some(params) = p.as_array() {
+                        for param in params {
+                            if let Some(l) = param.as_str() {
+                                self.printer.status.gcodes.push(
+                                    crate::printer::GCodeLine {
+                                        timestamp: Local::now(),
+                                        content: l.to_string(),
+                                    }
+                                );
+                            }
+                        }
+                    }
+                }
             }
             _ => {}
         }

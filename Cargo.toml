@@ -16,3 +16,4 @@ flume = { version = "0.10", default-features = false, features = ["spin", "selec
 itertools = "*"
 log4rs = "*"
 log = "*"
+chrono = "*"

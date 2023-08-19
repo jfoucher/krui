@@ -1,8 +1,9 @@
+use chrono::Timelike;
 use tui::{widgets::{Borders, Paragraph, Block, Wrap}, prelude::*};
 
 use crate::{ui::header, button::Button, markdown, app::App};
 
-const TOOLHEAD_HELP_TEXT: &str = "
+const CONSOLE_HELP_TEXT: &str = "
 # Toolhead Help
 
 This screen presents a list of all axis present on the printer.
@@ -20,7 +21,7 @@ Pressing the up and down arrow keys will select one of the axes.
 ";
 
 
-pub fn draw_toolhead_tab<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
+pub fn draw_tab<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
 where
     B: Backend,
 {
@@ -36,8 +37,22 @@ where
         .as_ref(),
     )
     .split(area);
-    let t_title = Span::styled(format!("{: ^width$}", "Toolhead", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
-    let p = Paragraph::new("TOOLHEAD TAB HERE")
+    let t_title = Span::styled(format!("{: ^width$}", "Console", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
+    
+    let text: Vec<Line> = app.printer.status.gcodes.iter().map(|gcode| {
+        let mut content = gcode.content.as_str().to_string();
+        let mut fg = Color::White;
+        let mut modif = Modifier::empty();
+        if content.starts_with("//") {
+            content = content.replace("//", "  ");
+            fg = Color::Reset;
+        }
+        Line::from(vec![
+            Span::styled(format!("{:0<2}:{:0<2}", gcode.timestamp.hour(), gcode.timestamp.minute()), Style::default().fg(Color::Reset).bg(Color::White)),
+            Span::styled(content, Style::default().fg(fg).add_modifier(modif)),
+        ])
+    }).collect();
+    let p = Paragraph::new(text)
         .block(Block::default()
             .title(t_title)
             .title_alignment(Alignment::Center)
@@ -48,9 +63,10 @@ where
     let buttons = vec![
         Button::new("Help".to_string(), Some("1".to_string())),
         Button::new("Quit".to_string(), Some("2".to_string())),
-        Button::new("Close".to_string(), Some("3".to_string())),
+        Button::new("Toolhead".to_string(), Some("3".to_string())),
         Button::new("Extruder".to_string(), Some("4".to_string())),
-        Button::new("Console".to_string(), Some("5".to_string())),
+        Button::new("Close".to_string(), Some("5".to_string())),
+        
         Button::new(if app.printer.connected {"STOP".to_string()} else {"Restart".to_string()}, Some("10".to_string())),
     ];
     header::draw_footer(f, chunks[1], buttons);
@@ -60,7 +76,7 @@ where
 
 
 
-pub fn draw_toolhead_help<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
+pub fn draw_help<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
 where
     B: Backend,
 {
@@ -76,8 +92,8 @@ where
         .as_ref(),
     )
     .split(area);
-    let t_title = Span::styled(format!("{: ^width$}", "Toolhead help", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
-    let p = Paragraph::new(markdown::parse(TOOLHEAD_HELP_TEXT))
+    let t_title = Span::styled(format!("{: ^width$}", "Console help", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
+    let p = Paragraph::new(markdown::parse(CONSOLE_HELP_TEXT))
         .block(Block::default()
             .title(t_title)
             .title_alignment(Alignment::Center)

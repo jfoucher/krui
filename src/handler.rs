@@ -24,6 +24,8 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                 Tab::ToolheadHelp => Tab::Toolhead,
                 Tab::Extruder => Tab::ExtruderHelp,
                 Tab::ExtruderHelp => Tab::Extruder,
+                Tab::Console => Tab::ConsoleHelp,
+                Tab::ConsoleHelp => Tab::Console,
             }
         }
         KeyCode::F(2) => {
@@ -31,15 +33,22 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
         }
         KeyCode::F(3) => {
             app.current_tab = match app.current_tab {
-                Tab::Main => Tab::Toolhead,
-                _ => Tab::Main
+                Tab::Toolhead => Tab::Main,
+                _ => Tab::Toolhead,
             }
         }
 
         KeyCode::F(4) => {
             app.current_tab = match app.current_tab {
-                Tab::Main => Tab::Extruder,
-                _ => Tab::Main
+                Tab::Extruder => Tab::Main,
+                _ => Tab::Extruder,
+            }
+        }
+
+        KeyCode::F(5) => {
+            app.current_tab = match app.current_tab {
+                Tab::Console => Tab::Main,
+                _ => Tab::Console,
             }
         }
         KeyCode::F(10) => {
