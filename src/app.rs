@@ -258,6 +258,7 @@ impl App {
             if message.is_close() {
                 // Closing message, means we lost connection and have to restart
                 self.ws_connected = false;
+                self.starting = true;
                 self.printer.connected = false;
                 self.printer.stats.state = "error".to_string();
                 self.init();
