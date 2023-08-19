@@ -47,7 +47,7 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                 app.send_message("printer.emergency_stop".to_string(), serde_json::Value::Object(serde_json::Map::new()))
             } else {
                 app.send_message("printer.gcode.script".to_string(), json!({"script": "FIRMWARE_RESTART"}));
-                app.printer.stats.state = "starting".to_string();
+                app.printer.status.state = "starting".to_string();
             }
             
         }

@@ -27,9 +27,9 @@ where
         c = " ✔ ";
         bg = Color::Green;
         }
-        let state = format!(" {} ", app.printer.stats.state);
+        let state = format!(" {} ", app.printer.status.state);
 
-        let (state_bg, state_fg) = match app.printer.stats.state.as_str() {
+        let (state_bg, state_fg) = match app.printer.status.state.as_str() {
         "standby" => (Color::Gray, Color::LightGreen),
         "ready" => (Color::Gray, Color::LightGreen),
         "printing" => (Color::Green, Color::White),
@@ -54,10 +54,15 @@ where
                 Span::styled(" ", Style::default().bg(Color::Black)),
                 Span::styled("QGL", Style::default().fg(Color::White).bg(if qgl {Color::Green} else {Color::Red})),
                 Span::styled(" ", Style::default().bg(Color::Black)),
+                Span::styled("Step", Style::default().fg(Color::White).bg(if app.printer.status.stepper_enable {Color::Green} else {Color::Red})),
+                Span::styled(" ", Style::default().bg(Color::Black)),
+                Span::styled("Fil", Style::default().fg(Color::White).bg(if app.printer.status.filament_switch {Color::Green} else {Color::Red})),
+                Span::styled(" ", Style::default().bg(Color::Black)),
                 Span::styled(format!("Fan {:.0}", fan*100.0), Style::default().fg(Color::White).bg(if fan < 0.3 {Color::Green} else if fan < 0.6 {Color::LightRed } else {Color::Red})),
 
         ]),
         ];
+
         let p = Paragraph::new(text)
                 .block(Block::default()
                 //.title("")

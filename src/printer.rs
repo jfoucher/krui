@@ -1,6 +1,8 @@
 
 use std::collections::HashMap;
 
+use log4rs::append::rolling_file::LogFile;
+
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct Toolhead {
@@ -53,19 +55,17 @@ pub struct TemperatureFan {
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct PrinterStatus {
     pub heaters: HashMap<String, Heater>,
-    pub temperature_fans: HashMap<String, TemperatureFan>
-}
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
-pub struct PrintStats {
+    pub temperature_fans: HashMap<String, TemperatureFan>,
     pub state: String,
     pub state_message: String,
+    pub stepper_enable: bool,
+    pub filament_switch: bool,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct Printer {
     pub connected: bool,
     pub status: PrinterStatus,
-    pub stats: PrintStats,
     pub toolhead: Toolhead,
     pub sysload: f64,
 }
@@ -76,9 +76,12 @@ impl Printer {
             connected: false,
             status: PrinterStatus {
                 heaters: HashMap::new(),
-                temperature_fans: HashMap::new()
+                temperature_fans: HashMap::new(),
+                state: String::from("unknown"),
+                state_message: "".to_string(),
+                stepper_enable: false,
+                filament_switch: false,
             },
-            stats: PrintStats { state: String::from("unknown"), state_message: "".to_string() },
             toolhead: Toolhead {
                 position: Position {
                     x: 0.0,
@@ -158,35 +161,49 @@ impl Printer {
         }
         self.status.temperature_fans = new_heaters;
 
-        // Set printer state
-        let mut stats = self.stats.clone();
-        // if let Some(print_stats) = data.get("print_stats") {
-        //     log::info!("{:?}", print_stats);
-        //     if let Some(state) = print_stats.get("state") {
-        //         if let Some(s) = state.as_str() {
-        //             stats.state = s.to_string();
-        //         }
-        //     }
-        //     if let Some(state_msg) = print_stats.get("state_message") {
-        //         if let Some(s) = state_msg.as_str() {
-        //             stats.state_message = s.to_string();
-        //         }
-        //     }
-        // } else 
+        let mut status = self.status.clone();
         if let Some(print_stats) = data.get("webhooks") {
             log::info!("{:?}", print_stats);
             if let Some(state) = print_stats.get("state") {
                 if let Some(s) = state.as_str() {
-                    stats.state = s.to_string();
+                    status.state = s.to_string();
                 }
             }
             if let Some(state_msg) = print_stats.get("state_message") {
                 if let Some(s) = state_msg.as_str() {
-                    stats.state_message = s.to_string();
+                    status.state_message = s.to_string();
                 }
             }
         }
-        self.stats = stats;
+        if let Some(ks) = data.as_object() {
+            for (k, v) in ks {
+                if k.contains("filament_switch_sensor") {
+                    if let Some(fs) = v.get("filament_detected") {
+                        if let Some(s) = fs.as_bool() {
+                            status.filament_switch = s;
+                        }
+                    }
+                }
+            }
+        }
+        
+        if let Some(step) = data.get("stepper_enable") {
+            if let Some(steppers) = step.get("steppers") {
+                if let Some(ks) = steppers.as_object() {
+                    let mut e = false;
+                    for (_, v) in ks {
+                        if let Some(s) = v.as_bool() {
+                            if s {
+                                e = true;
+                                break;
+                            }
+                        }
+                    }
+                    status.stepper_enable = e;
+                }
+            }
+        }
+        self.status = status;
         // Update homed axes
         let mut homed = self.toolhead.homed.clone();
         if let Some(toolhead) = data.get("toolhead") {

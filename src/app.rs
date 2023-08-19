@@ -260,7 +260,7 @@ impl App {
                 self.ws_connected = false;
                 self.starting = true;
                 self.printer.connected = false;
-                self.printer.stats.state = "error".to_string();
+                self.printer.status.state = "error".to_string();
                 self.init();
                 return;
             }
@@ -314,7 +314,7 @@ impl App {
     pub fn init(&mut self) {
         log::info!("App init start");
         self.printer.connected = false;
-        self.printer.stats.state = "error".to_string();
+        self.printer.status.state = "error".to_string();
 
         self.rx = None;
         self.tx = None;

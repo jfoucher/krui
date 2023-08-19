@@ -41,8 +41,8 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         _ => {}
     }
 
-    if app.printer.connected == false && app.printer.stats.state == "shutdown".to_string() {
-        let sl = Paragraph::new(format!("{: ^50}{: <450}", format!("Klipper reports: {}", app.printer.stats.state), format!("{}Press F10 to restart the firmware", app.printer.stats.state_message)))
+    if app.printer.connected == false && app.printer.status.state == "shutdown".to_string() {
+        let sl = Paragraph::new(format!("{: ^50}{: <450}", format!("Klipper reports: {}", app.printer.status.state), format!("{}Press F10 to restart the firmware", app.printer.status.state_message)))
         .block(Block::default()
             .style(Style::default().bg(Color::White).fg(Color::Black))
             
