@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::error;
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::net::TcpStream;
-use std::process::exit;
-use std::sync::Arc;
 use std::time::Duration;
 use websocket::sync::Client;
 use websocket::ws::dataframe::DataFrame;
