@@ -83,7 +83,7 @@ where
 
 }
 
-pub fn draw_footer<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect, buttons: Vec<Button>)
+pub fn draw_footer<'a, B>(f: &mut Frame<B>, area: Rect, buttons: Vec<Button>)
 where
     B: Backend,
 {
@@ -95,7 +95,7 @@ where
 
     f.render_widget(block, area);
 
-    let constraints: Vec<Constraint> = buttons.iter().map(|b| Constraint::Ratio(1, buttons.len() as u32)).collect();
+    let constraints: Vec<Constraint> = buttons.iter().map(|_| Constraint::Ratio(1, buttons.len() as u32)).collect();
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)

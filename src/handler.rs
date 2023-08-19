@@ -24,7 +24,6 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                 Tab::ToolheadHelp => Tab::Toolhead,
                 Tab::Extruder => Tab::ExtruderHelp,
                 Tab::ExtruderHelp => Tab::Extruder,
-                _ => Tab::Main
             }
         }
         KeyCode::F(2) => {

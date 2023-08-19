@@ -60,7 +60,7 @@ where
     let buttons = vec![
         Button::new("Close".to_string(), Some("1".to_string())),
     ];
-    header::draw_footer(f, app, chunks[1], buttons);
+    header::draw_footer(f, chunks[1], buttons);
 
 }
 
@@ -153,7 +153,7 @@ where
         Button::new("Extruder".to_string(), Some("4".to_string())),
         Button::new(if app.printer.connected {"STOP".to_string()} else {"Restart".to_string()}, Some("10".to_string())),
     ];
-    header::draw_footer(f, app, chunks[2], buttons);
+    header::draw_footer(f, chunks[2], buttons);
     
 
 }
