@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::error;
 use std::io::{ErrorKind, Write};
+use std::net::TcpStream;
 use std::process::exit;
+use std::sync::Arc;
 use std::time::Duration;
+use websocket::sync::Client;
 use websocket::ws::dataframe::DataFrame;
 use websocket::{ClientBuilder, url::Url};
 use websocket::{OwnedMessage, WebSocketError, CloseData};
 use flume::{Sender, Receiver};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use rand::Rng;
 use serde_json::{Value, json};
 
@@ -81,12 +84,13 @@ pub struct HistoryItem {
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
-const CONNECTION: &'static str = "ws://voron.ink/websocket";
+const CONNECTION: &'static str = "ws://192.168.1.11/websocket";
 /// Application.
-#[derive(Debug)]
+
 pub struct App {
     /// Is the application running?
     pub running: bool,
+    pub starting: bool,
     pub data: String,
     pub printer: Printer,
     pub rx: Option<Receiver<OwnedMessage>>,
@@ -95,12 +99,15 @@ pub struct App {
     pub current_tab: Tab,
     pub history: HashMap<String, HistoryItem>,
     pub ws_connected: bool,
+    pub client: Option<Client<TcpStream>>,
+    pub client_rx: Option<Receiver<Client<TcpStream>>>,
 }
 
 impl Default for App {
     fn default() -> Self {
         Self {
             running: true,
+            starting: true,
             data: String::from(""),
             printer: Printer::new(),
             tx: None,
@@ -109,6 +116,8 @@ impl Default for App {
             current_tab: Tab::Main,
             history: HashMap::new(),
             ws_connected: false,
+            client: None,
+            client_rx: None,
         }
     }
 }
@@ -119,18 +128,27 @@ impl App {
         Self::default()
     }
 
-    pub fn start(&mut self) {
-        let url = Url::parse(CONNECTION).unwrap();
-        let mut builder = ClientBuilder::from_url(&url);
-        let client = match builder.connect_insecure() {
-            Ok(c) => c,
-            Err(_) => {
-                self.ws_connected = false;
-                self.printer.connected = false;
-                self.printer.stats.state = "error".to_string();
-                return;
-            },
-        };
+    fn generate_client(&mut self, tx: Sender<Client<TcpStream>>) -> JoinHandle<()> {
+        let get_client = thread::spawn(move || {
+            loop {
+                let url = Url::parse(CONNECTION).unwrap();
+                let mut builder = ClientBuilder::from_url(&url);
+                match builder.connect_insecure() {
+                    Ok(c) => {
+                        // Send message to main thread
+                        let _ = tx.send(c);
+                        break;
+                    },
+                    Err(_) => {
+                        continue;
+                    },
+                };
+            }
+        });
+        get_client
+    }
+
+    pub fn start(&mut self, client: Client<TcpStream>) {
         let stream = client.stream_ref();
         let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
         let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
@@ -139,7 +157,7 @@ impl App {
         
         let (send_tx, send_rx) = flume::unbounded();
         let (rcv_tx, rcv_rx) =flume::unbounded();
-
+        
     
         let tx_1 = send_tx.clone();
         self.tx = Some(send_tx);
@@ -165,6 +183,7 @@ impl App {
                 };
             }
         });
+
 
         let _receive_loop = thread::spawn(move || {
             // Receive loop
@@ -283,8 +302,8 @@ impl App {
                 }
             }
         } else {
-            if self.ws_connected == false {
-                self.init();
+            if self.starting == true {
+                self.try_init();
                 return;
             }
         }
@@ -301,22 +320,40 @@ impl App {
         self.rx = None;
         self.tx = None;
 
-        self.start();
-        self.send_message(String::from("server.connection.identify"), json!({
-            "client_name": "Krui",
-            "version":	"0.0.1",
-            "type":	"desktop",
-            "url":	"https://github.com/jfoucher/krui"
-        }));
-        self.send_message(String::from("server.info"), serde_json::Value::Object(serde_json::Map::new()));
-        self.send_message(String::from("printer.objects.list"), serde_json::Value::Object(serde_json::Map::new()));
-        self.send_message(String::from("server.history.list"), json!({
-            "limit": 100,
-            "start": 0,
-            "since": 0,
-            "order": "desc"
-        }));
+        let (client_tx, client_rx) =flume::unbounded();
+        self.client_rx = Some(client_rx);
+        // Connect in another thread
+        let _ = self.generate_client(client_tx);
+        // wait for client to be ready
+        self.try_init();
+        
+
         log::info!("App init done");
+    }
+
+    fn try_init(&mut self) {
+        match self.client_rx.as_ref().expect("No client").try_recv() {
+            Ok(c) => {
+                self.start(c);
+
+                self.send_message(String::from("server.connection.identify"), json!({
+                    "client_name": "Krui",
+                    "version":	"0.0.1",
+                    "type":	"desktop",
+                    "url":	"https://github.com/jfoucher/krui"
+                }));
+                self.send_message(String::from("server.info"), serde_json::Value::Object(serde_json::Map::new()));
+                self.send_message(String::from("printer.objects.list"), serde_json::Value::Object(serde_json::Map::new()));
+                self.send_message(String::from("server.history.list"), json!({
+                    "limit": 100,
+                    "start": 0,
+                    "since": 0,
+                    "order": "desc"
+                }));
+                self.starting = false;
+            },
+            Err(_) => {},
+        };
     }
 
     pub fn handle_response(&mut self, response: JsonRpcResponse) {
