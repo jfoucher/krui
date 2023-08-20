@@ -1,4 +1,4 @@
-use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap}};
+use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListState, ListItem, List}};
 
 use crate::{app::{App, HistoryItem}, button::Button, printer::{Heater, TemperatureFan}};
 use crate::markdown;
@@ -28,6 +28,7 @@ You can also press `escape` to exit any modal window that may be open to return 
 
 When you are in another screen, regular shortcuts are disabled. The only one that will always function is the `F8` key that will trigger an emergency stop. 
 ";
+
 
 
 pub fn draw_main_help<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
@@ -84,46 +85,52 @@ where
         )
         .split(area);
 
-    let mut v: Vec<(&String, &HistoryItem)> = app.history.iter().collect();
-    v.sort_by(|a, b| { b.1.end_time.total_cmp(&a.1.end_time)});
-    let history:Vec<Line> = v.iter().map(|i| { 
-        let status = match i.1.status.as_str() {
+    let mut v = app.history.items.clone();
+    v.sort_by(|a, b| { b.end_time.total_cmp(&a.end_time)});
+
+    // let v = vec![1,2,3];
+    let history:Vec<ListItem> = v.iter().map(|i| { 
+        let status = match i.status.as_str() {
             "cancelled" => " ✕ ",
             "completed" => " ✔ ",
             _ => " ? ",
         };
-        let status_bg = match i.1.status.as_str() {
+        let status_bg = match i.status.as_str() {
             "cancelled" => Color::Red,
             "completed" => Color::Green,
             _ => Color::Gray,
         };
-        let (hours, remainder) = (i.1.total_duration.round() as i64 / (60*60), i.1.total_duration.round() as i64 % (60*60));
+        let (hours, remainder) = (i.total_duration.round() as i64 / (60*60), i.total_duration.round() as i64 % (60*60));
         let (minutes, seconds) = (remainder / 60, remainder % 60);
         let mut time_str = format!("{}m{}s", minutes, seconds);
 
         if hours > 0 {
             time_str = format!("{}h{}", hours, time_str);
         }
-        vec![
-            Line::from(
-                vec![
-                    Span::styled(format!("{}", i.1.filename), Style::default().add_modifier(Modifier::BOLD).fg(Color::White)),
-                    Span::styled(format!("{}", " ".repeat(area.width as usize - 3 - i.1.filename.len())), Style::default()),
-                    Span::styled(format!("{}", status), Style::default().bg(status_bg).fg(Color::White)),
-                ]
-            ),
-            Line::from(format!("Filament: {:.0}mm Duration: {}", i.1.filament_used, time_str)),
-        ]
-    }).flatten().collect();
+        ListItem::new(
+            vec![
+                Line::from(
+                    vec![
+                        Span::styled(format!("{}", i.filename), Style::default().add_modifier(Modifier::BOLD).fg(Color::White)),
+                        Span::styled(format!("{}", " ".repeat(area.width as usize - 3 - i.filename.len())), Style::default()),
+                        Span::styled(format!("{}", status), Style::default().bg(status_bg).fg(Color::White)),
+                    ]
+                ),
+                Line::from(format!("Filament: {:.0}mm Duration: {}", i.filament_used, time_str)),
+            ]
+        )
+    }).collect();
 
     let t_title = Span::styled(format!("{: ^width$}", "Job history", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
-    let p = Paragraph::new(history)
+    let p = List::new(history)
+    .highlight_style(Style::default().bg(Color::Gray).fg(Color::DarkGray))
         .block(Block::default()
             .title(t_title)
             .title_alignment(Alignment::Center)
             .borders(Borders::NONE)
-        );
-    f.render_widget(p, chunks[0]);
+        )
+        ;
+    f.render_stateful_widget(p, chunks[0], &mut app.history.state);
 
     let mut h: Vec<Line<'a>> = vec![];
 

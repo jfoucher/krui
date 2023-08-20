@@ -15,6 +15,7 @@ use chrono::prelude::*;
 
 
 use crate::printer::Printer;
+use crate::ui::stateful_list::StatefulList;
 
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
@@ -98,7 +99,7 @@ pub struct App {
     pub tx: Option<Sender<OwnedMessage>>,
     pub sent_messages: HashMap<String, RpcRequest>,
     pub current_tab: Tab,
-    pub history: HashMap<String, HistoryItem>,
+    pub history: StatefulList<HistoryItem>,
     pub ws_connected: bool,
     pub client: Option<Client<TcpStream>>,
     pub client_rx: Option<Receiver<Client<TcpStream>>>,
@@ -115,7 +116,7 @@ impl Default for App {
             rx: None,
             sent_messages: HashMap::new(),
             current_tab: Tab::Main,
-            history: HashMap::new(),
+            history: StatefulList::with_items(vec![]),
             ws_connected: false,
             client: None,
             client_rx: None,
@@ -425,7 +426,7 @@ impl App {
                                 // println!("{:?}", job);
                                 if let Some(filename) = job.get("filename") {
                                     let filename = filename.as_str().unwrap().to_string();
-                                    if let Some(_) = self.history.get(&filename) {
+                                    if let Some(_) = self.history.items.iter().find(|i| {i.filename == filename}) {
                                         continue;
                                     }
                                     let mut h = HistoryItem {
@@ -455,8 +456,9 @@ impl App {
                                         }
                                         
                                     }
-                                    self.history.insert(filename, h);
+                                    self.history.add(h);
                                 }
+                                self.history.state.select(Some(0));
                             }
                         }
                     }

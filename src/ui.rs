@@ -2,6 +2,7 @@ pub mod header;
 pub mod toolhead;
 pub mod main;
 pub mod console;
+pub mod stateful_list;
 use tui::{
     backend::Backend,
     layout::{Alignment, Rect, Layout, Direction, Constraint},

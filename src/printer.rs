@@ -4,6 +4,8 @@ use std::{collections::HashMap, time::SystemTime};
 use chrono::DateTime;
 use log4rs::append::rolling_file::LogFile;
 
+use crate::ui::stateful_list::StatefulList;
+
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct Toolhead {
@@ -54,12 +56,12 @@ pub struct TemperatureFan {
     pub speed: f64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct GCodeLine {
     pub timestamp: DateTime<chrono::Local>,
     pub content: String,
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct PrinterStatus {
     pub heaters: HashMap<String, Heater>,
     pub temperature_fans: HashMap<String, TemperatureFan>,
@@ -70,7 +72,7 @@ pub struct PrinterStatus {
     pub gcodes: Vec<GCodeLine>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Printer {
     pub connected: bool,
     pub status: PrinterStatus,

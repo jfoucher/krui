@@ -57,8 +57,24 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
             } else {
                 app.send_message("printer.gcode.script".to_string(), json!({"script": "FIRMWARE_RESTART"}));
                 app.printer.status.state = "starting".to_string();
+            }   
+        },
+        KeyCode::Down | KeyCode::Char('j') => {
+            match app.current_tab {
+                Tab::Main => {
+                    app.history.next();
+                },
+                _ => {},
             }
-            
+            ;
+        },
+        KeyCode::Up | KeyCode::Char('k') => {
+            match app.current_tab {
+                Tab::Main => {
+                    app.history.previous();
+                },
+                _ => {},
+            }
         }
         
         // Other handlers you could add here.
