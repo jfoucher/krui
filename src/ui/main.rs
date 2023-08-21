@@ -1,6 +1,6 @@
 use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListState, ListItem, List}};
 
-use crate::{app::{App, HistoryItem}, button::Button, printer::{Heater, TemperatureFan}};
+use crate::{app::{App, HistoryItem}, button::{Button, action_button}, printer::{Heater, HeaterType}};
 use crate::markdown;
 use crate::ui::header;
 
@@ -70,7 +70,7 @@ pub fn draw_main_tab<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
 where
     B: Backend,
 {
-    let temp_size = 2 * (app.printer.status.heaters.len() + app.printer.status.temperature_fans.len()) as u16 + 1;
+    let temp_size = 2 * (app.printer.status.heaters.items.len()) as u16 ;
     
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -78,6 +78,7 @@ where
         .constraints(
             [
                 Constraint::Min(6),     // Job history
+                Constraint::Length(1),     // title
                 Constraint::Length(temp_size),
                 Constraint::Max(1),     // Tab Footer
             ]
@@ -89,67 +90,95 @@ where
     v.sort_by(|a, b| { b.end_time.total_cmp(&a.end_time)});
 
     // let v = vec![1,2,3];
-    let history:Vec<ListItem> = v.iter().map(|i| { 
-        let status = match i.status.as_str() {
-            "cancelled" => " ✕ ",
+    let history:Vec<ListItem> = v.iter().enumerate().map(|(i, item)| { 
+        let status = match item.status.as_str() {
+            "cancelled" | "klippy_shutdown" => " ✕ ",
             "completed" => " ✔ ",
             _ => " ? ",
         };
-        let status_bg = match i.status.as_str() {
+        let mut selected = false;
+        if let Some(sel) = app.history.state.selected() {
+            selected = sel == i;
+        }
+        let status_bg = match item.status.as_str() {
             "cancelled" => Color::Red,
             "completed" => Color::Green,
             _ => Color::Gray,
         };
-        let (hours, remainder) = (i.total_duration.round() as i64 / (60*60), i.total_duration.round() as i64 % (60*60));
+        let (hours, remainder) = (item.total_duration.round() as i64 / (60*60), item.total_duration.round() as i64 % (60*60));
         let (minutes, seconds) = (remainder / 60, remainder % 60);
         let mut time_str = format!("{}m{}s", minutes, seconds);
 
         if hours > 0 {
             time_str = format!("{}h{}", hours, time_str);
         }
+        let fg = if selected {Color::DarkGray} else {Color::Gray};
+        let bg = if selected {Color::Gray} else {Color::DarkGray};
         ListItem::new(
             vec![
                 Line::from(
                     vec![
-                        Span::styled(format!("{}", i.filename), Style::default().add_modifier(Modifier::BOLD).fg(Color::White)),
-                        Span::styled(format!("{}", " ".repeat(area.width as usize - 3 - i.filename.len())), Style::default()),
+                        Span::styled(format!("{}", item.filename), Style::default().add_modifier(Modifier::BOLD).fg(fg).bg(bg)),
+                        Span::styled(format!("{}", " ".repeat(area.width as usize - 3 - item.filename.len())), Style::default().fg(fg).bg(bg)),
                         Span::styled(format!("{}", status), Style::default().bg(status_bg).fg(Color::White)),
                     ]
                 ),
-                Line::from(format!("Filament: {:.0}mm Duration: {}", i.filament_used, time_str)),
+                Line::from(
+                    vec![
+                        Span::styled(format!("Filament: {:.0}mm Duration: {} {: >w$}", item.filament_used, time_str, w = f.size().width as usize), Style::default().fg(fg).bg(bg))
+                    ]
+                ),
             ]
         )
     }).collect();
 
+
+
     let t_title = Span::styled(format!("{: ^width$}", "Job history", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
+
     let p = List::new(history)
-    .highlight_style(Style::default().bg(Color::Gray).fg(Color::DarkGray))
         .block(Block::default()
             .title(t_title)
             .title_alignment(Alignment::Center)
             .borders(Borders::NONE)
         )
         ;
+
     f.render_stateful_widget(p, chunks[0], &mut app.history.state);
 
-    let mut h: Vec<Line<'a>> = vec![];
 
-    for heater in app.printer.status.heaters.clone() {
-        let mut l = heater_text(heater);
-        h.append(&mut l);
-    }
-    for heater in app.printer.status.temperature_fans.clone() {
-        let mut l = temp_fan_text(heater);
-        h.append(&mut l);
-    }
     let t_title = Span::styled(format!("{: ^width$}", "Temperatures", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
-    let p = Paragraph::new(h)
+
+    f.render_widget(Paragraph::new(t_title), chunks[1]);
+
+    let heaters_text: Vec<ListItem> = app.printer.status.heaters.items.iter().enumerate().map(|(i, h)| {
+        let mut selected = false;
+        if let Some(sel) = app.printer.status.heaters.state.selected() {
+            selected = sel == i;
+        }
+        heater_text(h.clone(), selected, f.size().width)
+    }).collect();
+
+    let bottom = Layout::default()
+    .direction(Direction::Horizontal)
+    .margin(0)
+    .constraints(
+        [
+            Constraint::Length((chunks[1].width-42)/2),     // spacer
+            Constraint::Length(42),
+            Constraint::Length((chunks[1].width-42)/2),     // Spacer
+        ]
+        .as_ref(),
+    )
+    .split(chunks[2]);
+
+    let p = List::new(heaters_text)
         .block(Block::default()
-            .title(t_title)
-            .title_alignment(Alignment::Center)
             .borders(Borders::NONE)
-        );
-    f.render_widget(p, chunks[1]);
+        )
+        ;
+
+    f.render_stateful_widget(p, bottom[1], &mut app.printer.status.heaters.state);
 
 
 
@@ -161,53 +190,31 @@ where
         Button::new("Console".to_string(), Some("5".to_string())),
         Button::new(if app.printer.connected {"STOP".to_string()} else {"Restart".to_string()}, Some("10".to_string())),
     ];
-    header::draw_footer(f, chunks[2], buttons);
+    header::draw_footer(f, chunks[3], buttons);
     
 
 }
 
-fn heater_text<'a>(heater: (String, Heater)) -> Vec<Line<'a>> {
-    let pow = (heater.1.power * 40.0) as usize;
+fn heater_text<'a>(heater: Heater, selected: bool, width: u16) -> ListItem<'a> {
+    let pow = (heater.power * 40.0) as usize;
 
-    let text = vec![
+    let fg = if selected {Color::DarkGray} else {Color::Gray};
+    let bg = if selected {Color::Gray} else {Color::DarkGray};
+
+    let text = ListItem::new(vec![
         Line::from(vec![
-            Span::styled(format!("{: <15}", heater.0.replace("_", " ")), Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta)),
-            Span::styled(format!("{:3.2}°C", heater.1.temperature), Style::default().fg(Color::White)),
-            Span::styled(" Target: ", Style::default().fg(Color::Cyan)),
-            Span::styled(format!("{:3.0}°C", heater.1.target), Style::default().fg(Color::White)),
+            Span::styled(format!("{: <15}", heater.name.replace("temperature_fan ", "").replace("_", " ")), Style::default().add_modifier(Modifier::BOLD).fg(if heater.heater_type == HeaterType::Heater { Color::Magenta } else { Color::Red }).bg(bg)),
+            Span::styled(format!("{:3.2}°C ", heater.temperature), Style::default().fg(fg).bg(bg)),
+            Span::styled(" Target: ", Style::default().fg(Color::Cyan).bg(bg)),
+            Span::styled(format!("{:3.0}°C {: >w$}", heater.target, w=width as usize), Style::default().fg(fg).bg(bg)),
         ]).alignment(Alignment::Center),
         Line::from(vec![
-            Span::styled("[", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{: <15.15}", "|".repeat(pow)), Style::default().add_modifier(Modifier::BOLD).fg(Color::Indexed(40))),
-            Span::styled(format!("{: <15.15}", "|".repeat(if pow > 15 {pow-15} else {0})), Style::default().fg(Color::Indexed(214)).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{: <10.10}", "|".repeat(if pow > 30 {pow-30} else {0})), Style::default().fg(Color::Indexed(196)).add_modifier(Modifier::BOLD)),
-            Span::styled("]", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            Span::styled("[", Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{: <15.15}", "|".repeat(pow)), Style::default().add_modifier(Modifier::BOLD).fg(Color::Indexed(40)).bg(bg)),
+            Span::styled(format!("{: <15.15}", "|".repeat(if pow > 15 {pow-15} else {0})), Style::default().fg(Color::Indexed(214)).bg(bg).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{: <10.10}", "|".repeat(if pow > 30 {pow-30} else {0})), Style::default().fg(Color::Indexed(196)).bg(bg).add_modifier(Modifier::BOLD)),
+            Span::styled("]", Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)),
         ]).alignment(Alignment::Center),
-    ];
+    ]);
     text
 }
-
-fn temp_fan_text<'a>(temp_fan: (String, TemperatureFan)) -> Vec<Line<'a>> {
-    let pow = (temp_fan.1.speed * 40.0) as usize;
-
-    let text = vec![
-        Line::from(vec![
-            Span::styled(
-                format!("{: <15}", temp_fan.0.replace("temperature_fan ", "").replace("_", " ")), 
-                Style::default().add_modifier(Modifier::BOLD).fg(Color::Indexed(208))
-            ),
-            Span::styled(format!("{:3.2}°C", temp_fan.1.temperature), Style::default().fg(Color::White)),
-            Span::styled(" Target: ", Style::default().fg(Color::Cyan)),
-            Span::styled(format!("{:3.0}°C", temp_fan.1.target), Style::default().fg(Color::White)),
-        ]).alignment(Alignment::Center),
-        Line::from(vec![
-            Span::styled("[", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{: <15.15}", "|".repeat(pow)), Style::default().add_modifier(Modifier::BOLD).fg(Color::Indexed(40))),
-            Span::styled(format!("{: <15.15}", "|".repeat(if pow > 15 {pow-15} else {0})), Style::default().fg(Color::Indexed(214)).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{: <10.10}", "|".repeat(if pow > 30 {pow-30} else {0})), Style::default().fg(Color::Indexed(196)).add_modifier(Modifier::BOLD)),
-            Span::styled("]", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-        ]).alignment(Alignment::Center),
-    ];
-    text
-}
-

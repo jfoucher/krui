@@ -27,7 +27,10 @@ where
         c = " ✔ ";
         bg = Color::Green;
         }
-        let state = format!(" {} ", app.printer.status.state);
+        let mut state = format!(" {} ", app.printer.status.state);
+        if app.printer.status.print_state == "printing" {
+            state = "printing".to_string();
+        }
 
         let (state_bg, state_fg) = match app.printer.status.state.as_str() {
         "standby" => (Color::Gray, Color::LightGreen),

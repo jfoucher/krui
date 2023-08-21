@@ -82,8 +82,11 @@ pub struct HistoryItem {
     pub estimated_time: f64,
     pub total_duration: f64
 }
-
-
+#[derive(Debug, Clone, PartialEq)]
+pub enum MainTabWidget {
+    History,
+    Temperatures,
+}
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
 const CONNECTION: &'static str = "ws://192.168.1.11/websocket";
@@ -103,6 +106,7 @@ pub struct App {
     pub ws_connected: bool,
     pub client: Option<Client<TcpStream>>,
     pub client_rx: Option<Receiver<Client<TcpStream>>>,
+    pub selected_widget: MainTabWidget,
 }
 
 impl Default for App {
@@ -120,6 +124,7 @@ impl Default for App {
             ws_connected: false,
             client: None,
             client_rx: None,
+            selected_widget: MainTabWidget::History,
         }
     }
 }
@@ -132,6 +137,7 @@ impl App {
 
     fn generate_client(&mut self, tx: Sender<Client<TcpStream>>) -> JoinHandle<()> {
         let get_client = thread::spawn(move || {
+            log::info!("Generating client");
             loop {
                 let url = Url::parse(CONNECTION).unwrap();
                 let mut builder = ClientBuilder::from_url(&url);
@@ -152,6 +158,7 @@ impl App {
     }
 
     pub fn start(&mut self, client: Client<TcpStream>) {
+        log::info!("App start");
         let stream = client.stream_ref();
         let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
         let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
@@ -172,16 +179,17 @@ impl App {
                 // Send loop
                 match send_rx.recv() {
                     Ok(m) => {
+                        let mut d2: Vec<u8> = vec![0, 1];
+                        d2.append(&mut "reset".to_string().into_bytes());
                         log::debug!("sending message {:?}", m);
                         if m.is_data() {
                             let _ = sender.send_message(&m);
                         } else if m.is_close() {
                             // Tell the server to close the connection
                             let _ = sender.send_message(&m);
-                            let mut d2: Vec<u8> = vec![0, 1];
-                            d2.append(&mut "reset".to_string().into_bytes());
-                            if m.take_payload() == d2 {
-                                log::info!("exiting sending thread");
+                            let pl = m.take_payload();
+                            if pl == d2 {
+                                log::info!("exiting sending thread {:?}", pl);
                                 break;
                             }
                         }
@@ -268,16 +276,15 @@ impl App {
             if message.is_close() {
                 // todo make sure 
                 // Closing message, means we lost connection and have to restart
-                let d = message.take_payload();
                 
-                let mut d2: Vec<u8> = vec![0, 1];
-                d2.append(&mut "reset".to_string().into_bytes());
+                let d2 = OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string())));
 
-                if d == d2{
+                if message.clone() == d2{
                     self.ws_connected = false;
                     self.starting = true;
                     self.printer.connected = false;
                     self.printer.status.state = "error".to_string();
+                    log::info!("Doing init because of close message reset");
                     self.init();
                     return;
                 } 
@@ -335,7 +342,7 @@ impl App {
         self.rx = None;
         self.tx = None;
 
-        let (client_tx, client_rx) =flume::unbounded();
+        let (client_tx, client_rx) = flume::unbounded();
         self.client_rx = Some(client_rx);
         // Connect in another thread
         let _ = self.generate_client(client_tx);
@@ -349,26 +356,30 @@ impl App {
                 log::info!("Client connected");
                 self.start(c);
 
-                self.send_message(String::from("server.connection.identify"), json!({
-                    "client_name": "Krui",
-                    "version":	"0.0.1",
-                    "type":	"desktop",
-                    "url":	"https://github.com/jfoucher/krui"
-                }));
-                self.send_message(String::from("server.info"), serde_json::Value::Object(serde_json::Map::new()));
-                self.send_message(String::from("printer.objects.list"), serde_json::Value::Object(serde_json::Map::new()));
-                self.send_message(String::from("server.history.list"), json!({
-                    "limit": 100,
-                    "start": 0,
-                    "since": 0,
-                    "order": "desc"
-                }));
+                self.send_start_messages();
                 self.starting = false;
             },
             Err(e) => {
                 // log::info!("Client connection error {:?}", e);
             },
         };
+    }
+
+    fn send_start_messages(&mut self) {
+        self.send_message(String::from("server.connection.identify"), json!({
+            "client_name": "Krui",
+            "version":	"0.0.1",
+            "type":	"desktop",
+            "url":	"https://github.com/jfoucher/krui"
+        }));
+        self.send_message(String::from("server.info"), serde_json::Value::Object(serde_json::Map::new()));
+        self.send_message(String::from("printer.objects.list"), serde_json::Value::Object(serde_json::Map::new()));
+        self.send_message(String::from("server.history.list"), json!({
+            "limit": 100,
+            "start": 0,
+            "since": 0,
+            "order": "desc"
+        }));
     }
 
     pub fn handle_response(&mut self, response: JsonRpcResponse) {
@@ -438,23 +449,32 @@ impl App {
                                         filament_used: 0.0,
                                     };
                                     if let Some(status) = job.get("status") {
-                                        h.status = status.as_str().unwrap().to_string();
+                                        if let Some(s) = status.as_str() {
+                                            h.status = s.to_string();
+                                        }
                                     }
                                     if let Some(end_time) = job.get("end_time") {
-                                        h.end_time = end_time.as_f64().unwrap();
+                                        if let Some(s) = end_time.as_f64() {
+                                            h.end_time = s;
+                                        }
                                     }
                                     if let Some(total_duration) = job.get("total_duration") {
-                                        h.total_duration = total_duration.as_f64().unwrap();
+                                        if let Some(s) = total_duration.as_f64() {
+                                            h.total_duration = s;
+                                        }
                                     }
                                     if let Some(filament_used) = job.get("filament_used") {
-                                        h.filament_used = filament_used.as_f64().unwrap();
+                                        if let Some(s) = filament_used.as_f64() {
+                                            h.filament_used = s;
+                                        }
                                     }
 
                                     if let Some(metadata) = job.get("metadata") {
                                         if let Some(estimated_time) = metadata.get("estimated_time") {
-                                            h.estimated_time = estimated_time.as_f64().unwrap();
+                                            if let Some(s) = estimated_time.as_f64() {
+                                                h.estimated_time = s;
+                                            }
                                         }
-                                        
                                     }
                                     self.history.add(h);
                                 }
@@ -480,7 +500,7 @@ impl App {
             "notify_klippy_ready" => {
                 log::debug!("notify_klippy_ready");
                 self.printer.connected = true;
-                self.init();
+                self.send_start_messages();
             },
             "notify_proc_stat_update" => {},
             "notify_status_update" => {
@@ -516,6 +536,16 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    pub fn emergency_stop(&mut self) {
+        self.send_message("printer.emergency_stop".to_string(), serde_json::Value::Object(serde_json::Map::new()));
+        self.printer.status.state = "error".to_string();
+        self.printer.connected = false;
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
+        }
+        
     }
 
     pub fn send_message(&mut self, method: String, params: Value ) {

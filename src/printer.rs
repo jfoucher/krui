@@ -2,6 +2,7 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use chrono::DateTime;
+use itertools::Step;
 use log4rs::append::rolling_file::LogFile;
 
 use crate::ui::stateful_list::StatefulList;
@@ -34,26 +35,25 @@ pub struct Fan {
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+pub enum HeaterType {
+    Heater,
+    TemperatureFan,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct Heater {
+    pub name: String,
     #[serde(default = "default_float")]
     pub temperature: f64,
     #[serde(default = "default_float")]
     pub target: f64,
     #[serde(default = "default_float")]
     pub power: f64,
+    pub heater_type: HeaterType,
 }
 
 pub fn default_float() -> f64 {
     return 0.0;
-}
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
-pub struct TemperatureFan {
-    #[serde(default = "default_float")]
-    pub temperature: f64,
-    #[serde(default = "default_float")]
-    pub target: f64,
-    #[serde(default = "default_float")]
-    pub speed: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -63,9 +63,9 @@ pub struct GCodeLine {
 }
 #[derive(Debug, Clone)]
 pub struct PrinterStatus {
-    pub heaters: HashMap<String, Heater>,
-    pub temperature_fans: HashMap<String, TemperatureFan>,
+    pub heaters: StatefulList<Heater>,
     pub state: String,
+    pub print_state: String,
     pub state_message: String,
     pub stepper_enable: bool,
     pub filament_switch: bool,
@@ -78,6 +78,7 @@ pub struct Printer {
     pub status: PrinterStatus,
     pub toolhead: Toolhead,
     pub sysload: f64,
+    pub printing_file: Option<String>,
 }
 
 impl Printer {
@@ -85,9 +86,9 @@ impl Printer {
         Printer {
             connected: false,
             status: PrinterStatus {
-                heaters: HashMap::new(),
-                temperature_fans: HashMap::new(),
+                heaters: StatefulList::with_items(vec![]),
                 state: String::from("unknown"),
+                print_state: String::from("unknown"),
                 state_message: "".to_string(),
                 stepper_enable: false,
                 filament_switch: false,
@@ -103,6 +104,7 @@ impl Printer {
                 fan: Fan { speed: 0.0 }
             },
             sysload: 0.0,
+            printing_file: None,
         }
     }
 
@@ -112,8 +114,8 @@ impl Printer {
                 // add heater to HashMap of heaters, with blank heaters
                 for h in available_heaters.as_array().unwrap() {
                     let heater_name: String = serde_json::from_value(h.clone()).unwrap();
-                    if let None = self.status.heaters.get(&heater_name) {
-                        self.status.heaters.insert(serde_json::from_value(h.clone()).unwrap(), Heater { temperature: 0.0, target: 0.0, power: 0.0 });
+                    if let None = self.status.heaters.items.iter().find(|h| {h.name == heater_name}) {
+                        self.status.heaters.add(Heater { name: heater_name, temperature: 0.0, target: 0.0, power: 0.0, heater_type: HeaterType::Heater });
                     }
                 }
             }
@@ -126,51 +128,36 @@ impl Printer {
                         }
                     }
                     let heater_name: String = serde_json::from_value(h.clone()).unwrap();
-                    if let None = self.status.temperature_fans.get(&heater_name) {
-                        self.status.temperature_fans.insert(serde_json::from_value(h.clone()).unwrap(), TemperatureFan { temperature: 0.0, target: 0.0, speed: 0.0 });
+                    if let None = self.status.heaters.items.iter().find(|h| {h.name == heater_name}) {
+                        self.status.heaters.add(Heater { name:heater_name, temperature: 0.0, target: 0.0, power: 0.0, heater_type: HeaterType::TemperatureFan });
                     }
                 }
             }
         }
+        let mut new_heaters = self.status.heaters.items.clone();
         // For each heater, check if we have data to set their values
-        let mut new_heaters = self.status.heaters.clone();
-        for (k, heater) in &self.status.heaters {
+        for (i, heater) in self.status.heaters.items.iter().enumerate() {
             // try to get current heater from data
-            if let Some(heater_data) = data.get(k) {
-                let mut nh = heater.clone();
+            let mut nh = heater.clone();
+            if let Some(heater_data) = data.get(nh.name.clone()) {
                 if let Some(temp) = heater_data.get("temperature") {
-                    nh.temperature = serde_json::from_value(temp.clone()).unwrap();
+                    nh.temperature = temp.as_f64().unwrap();
                 }
                 if let Some(pow) = heater_data.get("power") {
-                    nh.power = serde_json::from_value(pow.clone()).unwrap();
-                }
-                if let Some(t) = heater_data.get("target") {
-                    nh.target = serde_json::from_value(t.clone()).unwrap();
-                }
-                new_heaters.insert(k.to_string(), nh);
-            }
-        }
-        self.status.heaters = new_heaters;
-
-        // For each temp fan, check if we have data to set their values
-        let mut new_heaters = self.status.temperature_fans.clone();
-        for (k, heater) in &self.status.temperature_fans {
-            // try to get current fan from data
-            if let Some(heater_data) = data.get(k) {
-                let mut nh = heater.clone();
-                if let Some(temp) = heater_data.get("temperature") {
-                    nh.temperature = serde_json::from_value(temp.clone()).unwrap();
+                    nh.power = pow.as_f64().unwrap();
                 }
                 if let Some(pow) = heater_data.get("speed") {
-                    nh.speed = serde_json::from_value(pow.clone()).unwrap();
+                    nh.power = pow.as_f64().unwrap();
                 }
                 if let Some(t) = heater_data.get("target") {
                     nh.target = serde_json::from_value(t.clone()).unwrap();
                 }
-                new_heaters.insert(k.to_string(), nh);
+                new_heaters[i] = nh;
             }
         }
-        self.status.temperature_fans = new_heaters;
+        self.status.heaters.items = new_heaters;
+
+
 
         let mut status = self.status.clone();
         if let Some(print_stats) = data.get("webhooks") {
@@ -182,6 +169,13 @@ impl Printer {
             if let Some(state_msg) = print_stats.get("state_message") {
                 if let Some(s) = state_msg.as_str() {
                     status.state_message = s.to_string();
+                }
+            }
+        }
+        if let Some(print_stats) = data.get("print_stats") {
+            if let Some(state) = print_stats.get("state") {
+                if let Some(s) = state.as_str() {
+                    status.print_state = s.to_string();
                 }
             }
         }
