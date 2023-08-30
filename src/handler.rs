@@ -82,6 +82,12 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                         },
                     }
                 },
+                Tab::Console => {
+                    app.console_scroll= app.console_scroll.saturating_add(1);
+                    app.console_scroll_state = app
+                        .console_scroll_state
+                        .position(app.console_scroll as u16);
+                },
                 _ => {},
             }
             ;
@@ -97,6 +103,12 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                             app.printer.status.heaters.previous();
                         },
                     }
+                },
+                Tab::Console => {
+                    app.console_scroll = app.console_scroll.saturating_sub(1);
+                    app.console_scroll_state = app
+                        .console_scroll_state
+                        .position(app.console_scroll as u16);
                 },
                 _ => {},
             }

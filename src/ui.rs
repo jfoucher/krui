@@ -7,7 +7,7 @@ use tui::{
     backend::Backend,
     layout::{Alignment, Rect, Layout, Direction, Constraint},
     style::{Color, Style, Modifier, Stylize},
-    widgets::{Block, BorderType, Borders, Paragraph, Padding, Wrap},
+    widgets::{Block, BorderType, Borders, Paragraph, Padding, Wrap, Clear},
     Frame, text::{Line, Span}, prelude::Corner,
 };
 use crate::{printer::{Heater}, button::{footer_button, Button, self}, markdown, app::HistoryItem};
@@ -46,7 +46,7 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
     }
 
     if app.printer.connected == false && app.printer.status.state == "shutdown".to_string() {
-        let sl = Paragraph::new(format!("{: ^50}{: <450}", format!("Klipper reports: {}", app.printer.status.state), format!("{}Press F10 to restart the firmware", app.printer.status.state_message)))
+        let sl = Paragraph::new(format!("{: ^50}\n{}", format!("Klipper reports: {}", app.printer.status.state), format!("{}\nPress F10 to restart the firmware", app.printer.status.state_message)))
         .block(Block::default()
             .style(Style::default().bg(Color::White).fg(Color::Black))
             
@@ -56,7 +56,9 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         .wrap(Wrap {trim: false})
         ;
 
-        frame.render_widget(sl, Rect::new((frame.size().width - 50) / 2, (frame.size().height - 12) / 2, 50, 12));
+        let area = Rect::new((frame.size().width - 50) / 2, (frame.size().height - 12) / 2, 50, 12);
+        frame.render_widget(Clear, area);
+        frame.render_widget(sl, area);
     }
 
     if app.printer.printing_file != None && app.printer.status.print_state != "printing".to_string() {
@@ -90,8 +92,10 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         )
 
         ;
+        let area = Rect::new((frame.size().width - 50) / 2, (frame.size().height - 12) / 2, 50, 12);
+        frame.render_widget(Clear, area);
 
-        frame.render_widget(sl, Rect::new((frame.size().width - 50) / 2, (frame.size().height - 12) / 2, 50, 12));
+        frame.render_widget(sl, area);
     }
     
     

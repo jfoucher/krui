@@ -1,7 +1,7 @@
 use chrono::Timelike;
-use tui::{widgets::{Borders, Paragraph, Block, Wrap}, prelude::*};
+use tui::{widgets::{Borders, Paragraph, Block, Wrap, Scrollbar, ScrollbarOrientation}, prelude::*};
 
-use crate::{ui::header, button::Button, markdown, app::App};
+use crate::{ui::header, button::Button, markdown, app::App, printer::GCodeLine};
 
 const CONSOLE_HELP_TEXT: &str = "
 # Toolhead Help
@@ -26,20 +26,49 @@ where
     B: Backend,
 {
 
+
     let chunks = Layout::default()
     .direction(Direction::Vertical)
     .margin(0)
     .constraints(
         [
-            Constraint::Min(6),     // Help text
+            Constraint::Min(6),     // Tab content
             Constraint::Max(1),     // Tab Footer
         ]
         .as_ref(),
     )
     .split(area);
-    let t_title = Span::styled(format!("{: ^width$}", "Console", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
-    
-    let text: Vec<Line> = app.printer.status.gcodes.iter().map(|gcode| {
+
+    let div = Layout::default()
+    .direction(Direction::Vertical)
+    .margin(0)
+    .constraints(
+        [
+            Constraint::Max(1),     // Title
+            Constraint::Max(1),     // console input
+            Constraint::Min(6),     // Console content
+        ]
+        .as_ref(),
+    )
+    .split(chunks[0]);
+
+    let t_title = Span::styled(
+        format!("{: ^width$}", "Console", width = f.size().width as usize),
+        Style::default()
+            .add_modifier(Modifier::BOLD)
+            .fg(Color::White)
+            .bg(Color::Magenta)
+    );
+
+    let title = Block::default()
+        .title(t_title)
+        .title_alignment(Alignment::Center)
+        .borders(Borders::NONE);
+    f.render_widget(title, div[0]);   
+    // Reverse the order of the lines
+    let lines: Vec<&GCodeLine> = app.printer.status.gcodes.iter().rev().collect();
+
+    let text: Vec<Line> = lines.iter().map(|gcode| {
         let mut content = gcode.content.as_str().to_string();
         let mut fg = Color::White;
         let mut modif = Modifier::empty();
@@ -52,13 +81,28 @@ where
             Span::styled(content, Style::default().fg(fg).add_modifier(modif)),
         ])
     }).collect();
+    app.console_scroll_state = app.console_scroll_state.content_length(text.len() as u16);
+
+
     let p = Paragraph::new(text)
         .block(Block::default()
-            .title(t_title)
-            .title_alignment(Alignment::Center)
             .borders(Borders::NONE)
-        );
-    f.render_widget(p, chunks[0]);    
+        )
+        .wrap(Wrap { trim: true })
+        .scroll((app.console_scroll, 0))
+    ;
+
+    f.render_widget(p, div[2]);   
+
+    f.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        div[2],
+        &mut app.console_scroll_state,
+    );
+
 
     let buttons = vec![
         Button::new("Help".to_string(), Some("1".to_string())),

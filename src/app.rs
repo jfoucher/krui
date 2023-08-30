@@ -3,6 +3,7 @@ use std::error;
 use std::io::ErrorKind;
 use std::net::TcpStream;
 use std::time::{Duration, SystemTime};
+use tui::widgets::ScrollbarState;
 use websocket::sync::Client;
 use websocket::ws::dataframe::DataFrame;
 use websocket::{ClientBuilder, url::Url};
@@ -107,6 +108,8 @@ pub struct App {
     pub client: Option<Client<TcpStream>>,
     pub client_rx: Option<Receiver<Client<TcpStream>>>,
     pub selected_widget: MainTabWidget,
+    pub console_scroll: u16,
+    pub console_scroll_state: ScrollbarState,
 }
 
 impl Default for App {
@@ -125,6 +128,8 @@ impl Default for App {
             client: None,
             client_rx: None,
             selected_widget: MainTabWidget::History,
+            console_scroll: 0,
+            console_scroll_state: ScrollbarState::default(),
         }
     }
 }
@@ -158,7 +163,6 @@ impl App {
     }
 
     pub fn start(&mut self, client: Client<TcpStream>) {
-        log::info!("App start");
         let stream = client.stream_ref();
         let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
         let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));

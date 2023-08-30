@@ -257,3 +257,136 @@ impl Printer {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_update_fan_speed() {
+        let mut p = Printer::new();
+        let mut data = serde_json::json!({
+            "fan": {
+                "speed": 0.5
+            }
+        });
+        p.update(data);
+        assert_eq!(p.toolhead.fan.speed, 0.5);
+        data = serde_json::json!({
+            "fan": {
+                "speed": 0.75
+            }
+        });
+        p.update(data);
+        assert_eq!(p.toolhead.fan.speed, 0.75);
+    }
+
+    #[test]
+    fn test_update_fan_speed_does_not_change_other_data() {
+        let mut p = Printer::new();
+        let mut data = serde_json::json!({
+            "fan": {
+                "speed": 0.5
+            }
+        });
+        p.update(data);
+        assert_eq!(p.toolhead.fan.speed, 0.5);
+        data = serde_json::json!({
+            "fan": {
+                "speed": 0.75
+            }
+        });
+        p.update(data);
+        assert_eq!(p.toolhead.fan.speed, 0.75);
+        assert_eq!(p.toolhead.homed.x, false);
+        assert_eq!(p.status.state, "unknown");
+    }
+
+    #[test]
+    fn test_adding_new_heater_adds_heater(){
+        let mut p = Printer::new();
+        let mut data = serde_json::json!({
+            "heaters": {
+                "available_heaters": ["heater_bed", "extruder"]
+            }
+        });
+        p.update(data);
+        assert_eq!(p.status.heaters.items.len(), 2);
+        assert_eq!(p.status.heaters.items[0].name, "heater_bed");
+        assert_eq!(p.status.heaters.items[1].name, "extruder");
+    }
+    #[test]
+    fn test_updating_heater_data_does_not_add_new_heaters() {
+        let mut p = Printer::new();
+        let mut data = serde_json::json!({
+            "heaters": {
+                "available_heaters": ["heater_bed", "extruder"]
+            }
+        });
+        p.update(data);
+        assert_eq!(p.status.heaters.items.len(), 2);
+        assert_eq!(p.status.heaters.items[0].name, "heater_bed");
+        assert_eq!(p.status.heaters.items[1].name, "extruder");
+        data = serde_json::json!({
+            "heater_bed": {
+                "temperature": 50.0,
+                "power": 0.5,
+                "target": 60.0
+            }
+        });
+        p.update(data);
+        assert_eq!(p.status.heaters.items.len(), 2);
+        assert_eq!(p.status.heaters.items[0].name, "heater_bed");
+        assert_eq!(p.status.heaters.items[1].name, "extruder");
+    }
+
+    #[test]
+    fn test_add_temperature_fan_adds_temperature_fan() {
+        let mut p = Printer::new();
+        let mut data = serde_json::json!({
+            "heaters": {
+                "available_sensors": ["temperature_fan test_fan"]
+            }
+        });
+        p.update(data);
+        assert_eq!(p.status.heaters.items.len(), 1);
+        assert_eq!(p.status.heaters.items[0].name, "temperature_fan test_fan");
+    }
+
+    #[test]
+    fn test_update_temperature_fan_data_does_not_add_new_heaters() {
+        let mut p = Printer::new();
+        let mut data = serde_json::json!({
+            "heaters": {
+                "available_sensors": ["temperature_fan test_fan"]
+            }
+        });
+        p.update(data);
+        assert_eq!(p.status.heaters.items.len(), 1);
+        assert_eq!(p.status.heaters.items[0].name, "temperature_fan test_fan");
+        data = serde_json::json!({
+            "temperature_fan test_fan": {
+                "temperature": 50.0,
+                "power": 0.5,
+                "target": 60.0
+            }
+        });
+        p.update(data);
+        assert_eq!(p.status.heaters.items.len(), 1);
+        assert_eq!(p.status.heaters.items[0].name, "temperature_fan test_fan");
+        assert_eq!(p.status.heaters.items[0].heater_type, HeaterType::TemperatureFan);
+        assert_eq!(p.status.heaters.items[0].temperature, 50.0);
+        assert_eq!(p.status.heaters.items[0].power, 0.5);
+    }
+
+    #[test]
+    fn test_updating_filament_sensor_sets_filament_switch() {
+        let mut p = Printer::new();
+        let mut data = serde_json::json!({
+            "filament_switch_sensor test_sensor": {
+                "filament_detected": true
+            }
+        });
+        p.update(data);
+        assert_eq!(p.status.filament_switch, true);
+    }
+}
