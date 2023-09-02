@@ -1,7 +1,7 @@
 use chrono::Timelike;
 use tui::{widgets::{Borders, Paragraph, Block, Wrap, Scrollbar, ScrollbarOrientation}, prelude::*};
 
-use crate::{ui::header, button::Button, markdown, app::App, printer::GCodeLine};
+use crate::{ui::header, button::Button, markdown, app::{App, InputMode}, printer::GCodeLine};
 
 const CONSOLE_HELP_TEXT: &str = "
 # Toolhead Help
@@ -45,7 +45,7 @@ where
     .constraints(
         [
             Constraint::Max(1),     // Title
-            Constraint::Max(1),     // console input
+            Constraint::Length(3),     // console input
             Constraint::Min(6),     // Console content
         ]
         .as_ref(),
@@ -68,6 +68,33 @@ where
     // Reverse the order of the lines
     let lines: Vec<&GCodeLine> = app.printer.status.gcodes.iter().rev().collect();
 
+    let input = Paragraph::new(app.console_input.value.as_str())
+        .style(match app.console_input.mode {
+            InputMode::Normal => Style::default(),
+            InputMode::Editing => Style::default().fg(Color::Yellow),
+        })
+        .block(Block::default().borders(Borders::ALL).title("Send GCODE command"));
+
+    f.render_widget(input, div[1]);
+
+    match app.console_input.mode {
+        InputMode::Normal =>
+            // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
+            {}
+
+        InputMode::Editing => {
+            // Make the cursor visible and ask ratatui to put it at the specified coordinates after
+            // rendering
+            f.set_cursor(
+                // Draw the cursor at the current position in the input field.
+                // This position is can be controlled via the left and right arrow key
+                div[1].x + app.console_input.cursor_position as u16 + 1,
+                // Move one line down, from the border to the input line
+                div[1].y + 1,
+            )
+        }
+    }
+
     let text: Vec<Line> = lines.iter().map(|gcode| {
         let mut content = gcode.content.as_str().to_string();
         let mut fg = Color::White;
@@ -76,8 +103,13 @@ where
             content = content.replace("//", "  ");
             fg = Color::Reset;
         }
+        if content.starts_with("!!") {
+            content = content.replace("!!", "  ");
+            fg = Color::Red;
+            modif = Modifier::BOLD;
+        }
         Line::from(vec![
-            Span::styled(format!("{:0<2}:{:0<2}", gcode.timestamp.hour(), gcode.timestamp.minute()), Style::default().fg(Color::Reset).bg(Color::White)),
+            Span::styled(format!(" {:0<2}:{:0<2} ", gcode.timestamp.hour(), gcode.timestamp.minute()), Style::default().fg(Color::Reset).bg(Color::White)),
             Span::styled(content, Style::default().fg(fg).add_modifier(modif)),
         ])
     }).collect();

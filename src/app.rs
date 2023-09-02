@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use chrono::prelude::*;
 
 
-use crate::printer::Printer;
+use crate::printer::{Printer, Heater};
 use crate::ui::stateful_list::StatefulList;
 
 
@@ -88,6 +88,19 @@ pub enum MainTabWidget {
     History,
     Temperatures,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputMode {
+    Normal,
+    Editing,
+}
+
+pub struct InputState {
+    pub mode: InputMode,
+    pub value: String,
+    pub cursor_position: u16,
+}
+
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
 const CONNECTION: &'static str = "ws://192.168.1.11/websocket";
@@ -110,7 +123,11 @@ pub struct App {
     pub selected_widget: MainTabWidget,
     pub console_scroll: u16,
     pub console_scroll_state: ScrollbarState,
+    pub console_input: InputState,
+    pub temperature_input: InputState,
+    pub selected_heater: Option<Heater>,
 }
+
 
 impl Default for App {
     fn default() -> Self {
@@ -130,6 +147,9 @@ impl Default for App {
             selected_widget: MainTabWidget::History,
             console_scroll: 0,
             console_scroll_state: ScrollbarState::default(),
+            console_input: InputState { mode: InputMode::Normal, value: "".to_string(), cursor_position: 0 },
+            temperature_input: InputState { mode: InputMode::Editing, value: "".to_string(), cursor_position: 1 },
+            selected_heater: None,
         }
     }
 }

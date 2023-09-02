@@ -1,6 +1,6 @@
-use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListState, ListItem, List}};
+use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListState, ListItem, List, Clear, BorderType, Padding}};
 
-use crate::{app::{App, HistoryItem}, button::{Button, action_button}, printer::{Heater, HeaterType}};
+use crate::{app::{App, HistoryItem, InputMode}, button::{Button, action_button}, printer::{Heater, HeaterType}};
 use crate::markdown;
 use crate::ui::header;
 
@@ -181,6 +181,82 @@ where
     f.render_stateful_widget(p, bottom[1], &mut app.printer.status.heaters.state);
 
 
+    if let Some(heater) = &app.selected_heater {
+        let area = Rect::new((f.size().width - 50) / 2, (f.size().height - 12) / 2, 50, 12);
+        f.render_widget(Clear, area);
+        f.render_widget(Block::default()
+        .style(Style::default().reset().bg(Color::White).fg(Color::Black))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Thick), area);
+
+        let ch =  Layout::default()
+        .direction(Direction::Vertical)
+        .margin(0)
+        .constraints(
+            [
+                Constraint::Length(2),     // title
+                Constraint::Min(3),         // text
+                Constraint::Length(3),         // Input
+                Constraint::Length(2),     // Buttons
+            ]
+            .as_ref(),
+        )
+        .split(area);
+
+        // sl is a paragraph with an input allowing to set the heater temperature
+        let hn = heater.name.replace("temperature_fan ", "").replace("_", " ");
+        let sl = Paragraph::new(
+            Line::from(vec![
+                Span::styled("Set ", Style::default()),
+                Span::styled(&hn, Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(" temperature", Style::default()),
+            ]).alignment(Alignment::Center)
+            // format!("{: ^50}\n{}", format!("Set {} temperature", hn), 
+            //     format!("Enter the new temperature for the {} heater", hn)
+        ).block(Block::default()
+        ).wrap(Wrap {trim: false});
+        f.render_widget(sl, ch[0]);
+
+        let sl = Paragraph::new(
+            format!("Enter the new temperature for the {} heater", hn)).block(Block::default()
+        ).block(Block::default().padding(Padding::horizontal(1)))
+        .wrap(Wrap {trim: false});
+        f.render_widget(sl, ch[1]);
+
+
+        let input = Paragraph::new(app.temperature_input.value.as_str())
+        .style(match app.console_input.mode {
+            InputMode::Normal => Style::default(),
+            InputMode::Editing => Style::default().fg(Color::Yellow),
+        })
+        .blue()
+
+        .block(Block::default().borders(Borders::ALL).title("Temperature"));
+
+        f.render_widget(input, Rect::new(ch[2].x + 1, ch[2].y, ch[2].width - 2, ch[2].height));
+
+        match app.temperature_input.mode {
+            InputMode::Normal => {}
+            InputMode::Editing => {
+                f.set_cursor(
+                    ch[2].x + app.temperature_input.cursor_position as u16 + 1,
+                    ch[2].y + 1,
+                )
+            }
+        }
+
+        
+
+        let btn = Paragraph::new(
+            Line::from(vec![
+                Span::styled(format!("     {: <19}", "Enter<OK>"), Style::default().bg(Color::White).fg(Color::Black)),
+                Span::styled(format!("{: >19}     ", "Esc<Cancel>"), Style::default().bg(Color::White).fg(Color::Black)),
+            ])
+        );
+
+        f.render_widget(btn, Rect::new(ch[3].x + 1, ch[3].y, ch[3].width - 2, ch[3].height));
+
+    }
 
     let buttons = vec![
         Button::new("Help".to_string(), Some("1".to_string())),
