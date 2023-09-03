@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error;
 use std::io::ErrorKind;
 use std::net::TcpStream;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tui::widgets::ScrollbarState;
 use websocket::sync::Client;
 use websocket::ws::dataframe::DataFrame;
@@ -162,7 +162,7 @@ impl App {
 
     fn generate_client(&mut self, tx: Sender<Client<TcpStream>>) -> JoinHandle<()> {
         let get_client = thread::spawn(move || {
-            log::info!("Generating client");
+            log::debug!("Generating client");
             loop {
                 let url = Url::parse(CONNECTION).unwrap();
                 let mut builder = ClientBuilder::from_url(&url);
@@ -173,7 +173,7 @@ impl App {
                         break;
                     },
                     Err(e) => {
-                        log::info!("Client connect fail : {:?}", e);
+                        log::error!("Client connect fail : {:?}", e);
                         continue;
                     },
                 };
@@ -213,7 +213,7 @@ impl App {
                             let _ = sender.send_message(&m);
                             let pl = m.take_payload();
                             if pl == d2 {
-                                log::info!("exiting sending thread {:?}", pl);
+                                log::debug!("exiting sending thread {:?}", pl);
                                 break;
                             }
                         }
@@ -239,7 +239,7 @@ impl App {
                                 // Tell main thread that the connection has closed
                                 let _ = rcv_tx.send(close_message);
                                 // exit loop and terminate thread
-                                log::info!("exiting receiving thread");
+                                log::debug!("exiting receiving thread");
                                 break;
                             },
                             WebSocketError::IoError(err) => {
@@ -250,7 +250,7 @@ impl App {
                                     // Tell main thread that the connection has closed
                                     let _ = rcv_tx.send(close_message);
                                     // exit loop and terminate thread
-                                    log::info!("exiting receiving thread");
+                                    log::debug!("exiting receiving thread");
                                     break;
                                 } else if err.kind() == ErrorKind::WouldBlock {
                                     // Kill sending thread
@@ -258,7 +258,7 @@ impl App {
                                     // Tell main thread that the connection has closed
                                     let _ = rcv_tx.send(close_message);
                                     // exit loop and terminate thread
-                                    log::info!("exiting receiving thread");
+                                    log::debug!("exiting receiving thread");
                                     break;
                                 }
                             }
@@ -308,7 +308,7 @@ impl App {
                     self.starting = true;
                     self.printer.connected = false;
                     self.printer.status.state = "error".to_string();
-                    log::info!("Doing init because of close message reset");
+                    log::debug!("Doing init because of close message reset");
                     self.init();
                     return;
                 } 
@@ -359,7 +359,7 @@ impl App {
     }
 
     pub fn init(&mut self) {
-        log::info!("App init start");
+        log::debug!("App init start");
         self.printer.connected = false;
         self.printer.status.state = "error".to_string();
 
@@ -377,14 +377,14 @@ impl App {
     fn try_init(&mut self) {
         match self.client_rx.as_ref().expect("No client").try_recv() {
             Ok(c) => {
-                log::info!("Client connected");
+                log::debug!("Client connected");
                 self.start(c);
 
                 self.send_start_messages();
                 self.starting = false;
             },
             Err(e) => {
-                // log::info!("Client connection error {:?}", e);
+                log::debug!("Client connection error {:?}", e);
             },
         };
     }
@@ -541,7 +541,7 @@ impl App {
             },
             "notify_gcode_response" => {
                 // self.printer.status.gcodes.push(value);
-                log::info!("notify_gcode_response params {:?}", request.params);
+                log::debug!("notify_gcode_response params {:?}", request.params);
                 // self.quit();
                 if let Some(p) = request.params {
                     if let Some(params) = p.as_array() {

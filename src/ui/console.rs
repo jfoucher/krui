@@ -25,8 +25,6 @@ pub fn draw_tab<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
 where
     B: Backend,
 {
-
-
     let chunks = Layout::default()
     .direction(Direction::Vertical)
     .margin(0)
@@ -152,11 +150,10 @@ where
 
 
 
-pub fn draw_help<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
+pub fn draw_help<'a, B>(f: &mut Frame<B>, _: &mut App, area: Rect)
 where
     B: Backend,
 {
-
     let chunks = Layout::default()
     .direction(Direction::Vertical)
     .margin(0)

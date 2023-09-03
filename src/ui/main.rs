@@ -1,8 +1,10 @@
-use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListState, ListItem, List, Clear, BorderType, Padding}};
+use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List, Clear, BorderType, Padding}};
 
-use crate::{app::{App, HistoryItem, InputMode}, button::{Button, action_button}, printer::{Heater, HeaterType}};
+use crate::{app::{App, InputMode}, button::Button, printer::{Heater, HeaterType}};
 use crate::markdown;
 use crate::ui::header;
+
+use super::modal;
 
 const MAIN_HELP_TEXT: &str = "# KLUI Help
 
@@ -31,7 +33,7 @@ When you are in another screen, regular shortcuts are disabled. The only one tha
 
 
 
-pub fn draw_main_help<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
+pub fn draw_main_help<'a, B>(f: &mut Frame<B>, _: &mut App, area: Rect)
 where
     B: Backend,
 {
@@ -125,7 +127,7 @@ where
                 ),
                 Line::from(
                     vec![
-                        Span::styled(format!("Filament: {:.0}mm Duration: {} {: >w$}", item.filament_used, time_str, w = f.size().width as usize), Style::default().fg(fg).bg(bg))
+                        Span::styled(format!("Filament: {:.0}mm Duration: {} {w: >w$}", item.filament_used, time_str, w = f.size().width as usize), Style::default().fg(fg).bg(bg))
                     ]
                 ),
             ]
@@ -180,32 +182,11 @@ where
 
     f.render_stateful_widget(p, bottom[1], &mut app.printer.status.heaters.state);
 
-
+    // Changing heater temperature
     if let Some(heater) = &app.selected_heater {
-        let area = Rect::new((f.size().width - 50) / 2, (f.size().height - 12) / 2, 50, 12);
-        f.render_widget(Clear, area);
-        f.render_widget(Block::default()
-        .style(Style::default().reset().bg(Color::White).fg(Color::Black))
-        .borders(Borders::ALL)
-        .border_type(BorderType::Thick), area);
-
-        let ch =  Layout::default()
-        .direction(Direction::Vertical)
-        .margin(0)
-        .constraints(
-            [
-                Constraint::Length(2),     // title
-                Constraint::Min(3),         // text
-                Constraint::Length(3),         // Input
-                Constraint::Length(2),     // Buttons
-            ]
-            .as_ref(),
-        )
-        .split(area);
-
         // sl is a paragraph with an input allowing to set the heater temperature
         let hn = heater.name.replace("temperature_fan ", "").replace("_", " ");
-        let sl = Paragraph::new(
+        let title = Paragraph::new(
             Line::from(vec![
                 Span::styled("Set ", Style::default()),
                 Span::styled(&hn, Style::default().add_modifier(Modifier::BOLD)),
@@ -215,13 +196,10 @@ where
             //     format!("Enter the new temperature for the {} heater", hn)
         ).block(Block::default()
         ).wrap(Wrap {trim: false});
-        f.render_widget(sl, ch[0]);
-
-        let sl = Paragraph::new(
+        
+        let text = Paragraph::new(
             format!("Enter the new temperature for the {} heater", hn)).block(Block::default()
-        ).block(Block::default().padding(Padding::horizontal(1)))
-        .wrap(Wrap {trim: false});
-        f.render_widget(sl, ch[1]);
+        );
 
 
         let input = Paragraph::new(app.temperature_input.value.as_str())
@@ -230,23 +208,7 @@ where
             InputMode::Editing => Style::default().fg(Color::Yellow),
         })
         .blue()
-
         .block(Block::default().borders(Borders::ALL).title("Temperature"));
-
-        f.render_widget(input, Rect::new(ch[2].x + 1, ch[2].y, ch[2].width - 2, ch[2].height));
-
-        match app.temperature_input.mode {
-            InputMode::Normal => {}
-            InputMode::Editing => {
-                f.set_cursor(
-                    ch[2].x + app.temperature_input.cursor_position as u16 + 1,
-                    ch[2].y + 1,
-                )
-            }
-        }
-
-        
-
         let btn = Paragraph::new(
             Line::from(vec![
                 Span::styled(format!("     {: <19}", "Enter<OK>"), Style::default().bg(Color::White).fg(Color::Black)),
@@ -254,8 +216,46 @@ where
             ])
         );
 
-        f.render_widget(btn, Rect::new(ch[3].x + 1, ch[3].y, ch[3].width - 2, ch[3].height));
+        let chunks = modal(f, title, text, btn, Some(input));
+        
+        match app.temperature_input.mode {
+            InputMode::Normal => {}
+            InputMode::Editing => {
+                f.set_cursor(
+                    chunks[2].x + app.temperature_input.cursor_position as u16 + 1,
+                    chunks[2].y + 1,
+                )
+            }
+        }
+    }
 
+
+    // Starting a print
+    if app.printer.printing_file != None && app.printer.status.print_state != "printing".to_string() {
+        let title = Paragraph::new(
+            Line::from(vec![
+                Span::styled("Confirm print start", Style::default().add_modifier(Modifier::BOLD))
+            ]).alignment(Alignment::Center)
+        );
+
+        let text = Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(format!("{: <48}", "This will start a print of "), Style::default()),
+            ]),
+            Line::from(vec![
+                Span::styled(format!("{: ^48}", app.printer.printing_file.clone().unwrap()), Style::default().add_modifier(Modifier::BOLD)),
+            ]),
+        ]
+        );
+        
+        let buttons = Paragraph::new(
+            Line::from(vec![
+                Span::styled(format!("     {: <19}", "Enter<OK>"), Style::default().bg(Color::White).fg(Color::Black)),
+                Span::styled(format!("{: >19}     ", "Esc<Cancel>"), Style::default().bg(Color::White).fg(Color::Black)),
+            ]),
+        );
+
+        modal(f, title, text, buttons, None);
     }
 
     let buttons = vec![
@@ -282,7 +282,7 @@ fn heater_text<'a>(heater: Heater, selected: bool, width: u16) -> ListItem<'a> {
             Span::styled(format!("{: <15}", heater.name.replace("temperature_fan ", "").replace("_", " ")), Style::default().add_modifier(Modifier::BOLD).fg(if heater.heater_type == HeaterType::Heater { Color::Magenta } else { Color::Red }).bg(bg)),
             Span::styled(format!("{:3.2}°C ", heater.temperature), Style::default().fg(fg).bg(bg)),
             Span::styled(" Target: ", Style::default().fg(Color::Cyan).bg(bg)),
-            Span::styled(format!("{:3.0}°C {: >w$}", heater.target, w=width as usize), Style::default().fg(fg).bg(bg)),
+            Span::styled(format!("{:3.0}°C {w: >w$}", heater.target, w=width as usize), Style::default().fg(fg).bg(bg)),
         ]).alignment(Alignment::Center),
         Line::from(vec![
             Span::styled("[", Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)),

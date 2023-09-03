@@ -3,14 +3,16 @@ pub mod toolhead;
 pub mod main;
 pub mod console;
 pub mod stateful_list;
+use std::rc::Rc;
+
 use tui::{
     backend::Backend,
     layout::{Alignment, Rect, Layout, Direction, Constraint},
     style::{Color, Style, Modifier, Stylize},
-    widgets::{Block, BorderType, Borders, Paragraph, Padding, Wrap, Clear},
-    Frame, text::{Line, Span}, prelude::Corner,
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap, Clear, Padding},
+    Frame, text::{Line, Span},
 };
-use crate::{printer::{Heater}, button::{footer_button, Button, self}, markdown, app::HistoryItem};
+
 use crate::app::App;
 use crate::app::Tab;
 
@@ -61,44 +63,49 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         frame.render_widget(sl, area);
     }
 
-    if app.printer.printing_file != None && app.printer.status.print_state != "printing".to_string() {
-        let text = vec![
-            Line::from(vec![
-                Span::styled(format!("{: ^48}", "Confirm print start"), Style::default().add_modifier(Modifier::BOLD))
-            ]).alignment(Alignment::Center),
-            Line::from(vec![Span::styled(format!("{: ^48}", " "), Style::default())]),
-            Line::from(vec![
-                Span::styled(format!("{: <48}", "This will start a print of "), Style::default()),
-            ]),
-            Line::from(vec![
-                Span::styled(format!("{: ^48}", app.printer.printing_file.clone().unwrap()), Style::default().add_modifier(Modifier::BOLD)),
-            ]),
-            Line::from(vec![Span::styled(format!("{: ^48}", " "), Style::default())]),
-            Line::from(vec![Span::styled(format!("{: ^48}", " "), Style::default())]),
-            Line::from(vec![Span::styled(format!("{: ^48}", " "), Style::default())]),
-            Line::from(vec![Span::styled(format!("{: ^48}", " "), Style::default())]),
-            Line::from(vec![Span::styled(format!("{: ^48}", " "), Style::default())]),
-            Line::from(vec![
-                Span::styled(format!("     {: <19}", "Enter<OK>"), Style::default().bg(Color::White).fg(Color::Black)),
-                Span::styled(format!("{: >19}     ", "Esc<Cancel>"), Style::default().bg(Color::White).fg(Color::Black)),
-            ]),
-        ];
-        let sl = Paragraph::new(text)
-        .block(Block::default()
-            .style(Style::default().reset().bg(Color::White).fg(Color::Black))
-            
-            .borders(Borders::ALL)
-            .border_type(BorderType::Thick)
-        )
-
-        ;
-        let area = Rect::new((frame.size().width - 50) / 2, (frame.size().height - 12) / 2, 50, 12);
-        frame.render_widget(Clear, area);
-
-        frame.render_widget(sl, area);
-    }
     
     
 
 }
 
+pub fn modal<'a, B>(f: &mut Frame<B>, title: Paragraph, text: Paragraph, buttons: Paragraph, input: Option<Paragraph>) -> Rc<[Rect]>
+where
+    B: Backend,
+{
+    let area = Rect::new((f.size().width - 50) / 2, (f.size().height - 12) / 2, 50, 12);
+    f.render_widget(Clear, area);
+    f.render_widget(Block::default()
+        .style(Style::default().reset().bg(Color::White).fg(Color::Black))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Thick), area);
+
+    let mut constraints = [
+        Constraint::Length(2),     // title
+        Constraint::Min(3),         // text
+        Constraint::Length(3),         // Input
+        Constraint::Length(2),     // Buttons
+    ];
+    if input.is_none() {
+        constraints[2] = Constraint::Length(0);
+    }
+
+    let chunks =  Layout::default()
+        .direction(Direction::Vertical)
+        .margin(0)
+        .constraints(
+            constraints
+            .as_ref(),
+        )
+        .split(area);
+
+    f.render_widget(title, chunks[0]);
+    f.render_widget(text.block(Block::default().padding(Padding::horizontal(1)))
+    .wrap(Wrap {trim: false}), chunks[1]);
+    if let Some(input_field) = input {
+        f.render_widget(input_field, Rect::new(chunks[2].x + 1, chunks[2].y, chunks[2].width - 2, chunks[2].height));
+        
+    }
+    f.render_widget(buttons, Rect::new(chunks[3].x + 1, chunks[3].y, chunks[3].width - 2, chunks[3].height));
+
+    return chunks;
+}

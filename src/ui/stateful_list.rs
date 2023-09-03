@@ -1,7 +1,5 @@
 use tui::widgets::ListState;
 
-use crate::app::HistoryItem;
-
 #[derive(Debug, Clone)]
 pub struct StatefulList<T> {
     pub state: ListState,
