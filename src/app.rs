@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use chrono::prelude::*;
 
 
-use crate::printer::{Printer, Heater};
+use crate::printer::{Printer, Heater, PrintStats, FileMetadata};
 use crate::ui::stateful_list::StatefulList;
 
 
@@ -433,6 +433,25 @@ impl App {
                             }
                         }
                     }
+                }
+                "server.files.metadata" => {
+                    log::debug!("server.files.metadata {:?}", response.result);
+                    let mut current_print = PrintStats::new();
+                
+                    if let Some(cp) = &self.printer.current_print {
+                        current_print = cp.clone();
+                    }
+
+                    current_print.file = FileMetadata {
+                        size: response.result["size"].as_u64().unwrap(),
+                        slicer: response.result["slicer"].as_str().unwrap().to_string(),
+                        layer_height: response.result["layer_height"].as_f64().unwrap(),
+                        first_layer_height: response.result["first_layer_height"].as_f64().unwrap(),
+                        object_height: response.result["object_height"].as_f64().unwrap(),
+                        filament_total: response.result["filament_total"].as_f64().unwrap(),
+                        estimated_time: response.result["estimated_time"].as_f64().unwrap(),
+                    };
+                    self.printer.current_print = Some(current_print);
                 }
                 "printer.objects.list" => {
                     let json_objects: Vec<String> = serde_json::from_value(response.result["objects"].clone()).unwrap();

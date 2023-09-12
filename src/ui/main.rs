@@ -1,4 +1,8 @@
-use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List}};
+use std::time::SystemTime;
+
+use chrono::{DateTime, Utc, Local};
+use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List, Table, Row, Cell, TableState}};
+use websocket::header::Header;
 
 use crate::{app::{App, InputMode, HistoryItem}, button::Button, printer::{Heater, HeaterType}};
 use crate::markdown;
@@ -89,63 +93,94 @@ where
         .split(area);
 
     // only show history if not printing
-    // if app.printer.status.print_state != "printing" {
-    //     let mut v = app.history.items.clone();
-    //     v.sort_by(|a, b| { b.end_time.total_cmp(&a.end_time)});
+    if app.printer.status.print_state != "printing" {
+        let mut v = app.history.items.clone();
+        v.sort_by(|a, b| { b.end_time.total_cmp(&a.end_time)});
 
-    //     // TODO add item to history after print ends
-    //     let history:Vec<ListItem> = v.iter().enumerate().map(|(i, item)| { 
-    //         render_history(i, item, chunks[0], app)
-    //     }).collect();
+        // TODO add item to history after print ends
+        let history:Vec<ListItem> = v.iter().enumerate().map(|(i, item)| { 
+            render_history(i, item, chunks[0], app)
+        }).collect();
 
-    //     let t_title = Span::styled(format!("{: ^width$}", "Job history", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
+        let t_title = Span::styled(format!("{: ^width$}", "Job history", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
 
-    //     let p = List::new(history)
-    //         .block(Block::default()
-    //             .title(t_title)
-    //             .title_alignment(Alignment::Center)
-    //             .borders(Borders::NONE)
-    //         )
-    //         ;
+        let p = List::new(history)
+            .block(Block::default()
+                .title(t_title)
+                .title_alignment(Alignment::Center)
+                .borders(Borders::NONE)
+            )
+            ;
 
-    //     f.render_stateful_widget(p, chunks[0], &mut app.history.state);
-    // } else {
-        
-
-        let flow = app.printer.toolhead.extruder_velocity * (1.75/2.0)*(1.75/2.0) * 3.14159;
-        
+        f.render_stateful_widget(p, chunks[0], &mut app.history.state);
+    } else {
+        let fl = if app.printer.toolhead.extruder_velocity > 0.0 { app.printer.toolhead.extruder_velocity } else { 0.0 };
+        let flow = fl * (1.75/2.0)*(1.75/2.0) * 3.14159;
         let mut layer = 0;
         let mut total_layers = 0;
 
         let mut print_duration = 0.0;
         let mut filament_used = 0.0;
         let mut filename = "Unknown".to_string();
+        let mut progress = 0.0;
+        let mut estimate: f64 = 0.0;
+        let mut slicer_estimate = 0.0;
+        let mut eta = SystemTime::now();
 
         if let Some(current_print) = &app.printer.current_print {
             layer = current_print.current_layer;
             total_layers = current_print.total_layers;
             print_duration = current_print.print_duration;
-            filament_used = current_print.filament_used;
+            filament_used = if current_print.filament_used > 0.0 { current_print.filament_used } else { 0.0 };
             filename = current_print.filename.clone();
+            progress = if current_print.progress > 0.0 { current_print.progress } else { 0.0 };
+            slicer_estimate = current_print.file.estimated_time - print_duration;
+            // state.print_stats.print_duration / getters.getPrintPercent - state.print_stats.print_duration
+            estimate = print_duration / progress - print_duration;
+            eta = SystemTime::now() + std::time::Duration::from_secs(estimate.round() as u64);
+            
+            
         }
+        let datetime: DateTime<Local> = eta.into();
+
 
         let t_title = Span::styled(format!("{: ^width$}", format!("Printing {}", filename), width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
-        
 
-        let p = Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled(format!("Layer {}/{} ", layer, total_layers), Style::default()),
-                Span::styled(format!("Print time: {:.0}s", print_duration), Style::default()),
+
+        ;
+        let p = Table::new(vec![
+            Row::new(vec![
+                Line::from("Layer").alignment(Alignment::Center),
+                Line::from("Progress").alignment(Alignment::Center),
+                Line::from("Filament").alignment(Alignment::Center),
+                Line::from("Flow").alignment(Alignment::Center),
+            ]).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            Row::new(vec![
+                Line::from(format!("{}/{} ", layer, total_layers)).alignment(Alignment::Center),
+                Line::from(format!("{:.0} %", progress*100.0)).alignment(Alignment::Center),
+                Line::from(format!("{:.0}mm", filament_used)).alignment(Alignment::Center),
+                Line::from(format!("{:.0}mm3/s", flow)).alignment(Alignment::Center),
             ]),
-            Line::from(vec![
-                Span::styled(format!("Flow: {:.2}mm3/s Speed {:.0}mm/s", flow, app.printer.toolhead.speed), Style::default()),
+
+            Row::new(vec![
+                Line::from("Estimate").alignment(Alignment::Center),
+                Line::from("Slicer").alignment(Alignment::Center),
+                Line::from("Total").alignment(Alignment::Center),
+                Line::from("ETA").alignment(Alignment::Center),
+            ]).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            Row::new(vec![
+                Line::from(format!("{}", time_string_from_seconds(print_duration.round() as i64))).alignment(Alignment::Center),
+                Line::from(format!("{}", time_string_from_seconds(slicer_estimate.round() as i64))).alignment(Alignment::Center),
+                Line::from(format!("{}", time_string_from_seconds(estimate.round() as i64))).alignment(Alignment::Center),
+                Line::from(format!("{}", datetime.format("%T"))).alignment(Alignment::Center),
             ]),
-            Line::from(vec![
-                Span::styled(format!("Filament {:.0}mm", filament_used), Style::default()),
-            ]),
-            Line::from(vec![
-                Span::styled(format!("Position X: {:.2}mm Y: {:.2}mm Z: {:.2}mm", app.printer.toolhead.position.x, app.printer.toolhead.position.y, app.printer.toolhead.position.z), Style::default()),
-            ]),
+        ])
+        .widths(&[
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+
         ])
             .block(Block::default()
                 .title(t_title)
@@ -156,7 +191,7 @@ where
             ;
 
         f.render_widget(p, chunks[0]);
-    // }
+    }
 
 
     let t_title = Span::styled(format!("{: ^width$}", "Temperatures", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));

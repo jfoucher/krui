@@ -189,8 +189,10 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                                 app.history.state.select(None);
                             } else {
                                 // No history item is selected, which means we are on the confirmation dialog
-                                if let Some(file) = &app.printer.will_print_file {
+                                let will_print_file = app.printer.will_print_file.clone();
+                                if let Some(file) = will_print_file {
                                     app.send_message("printer.print.start".to_string(), json!({"filename": file.filename}));
+                                    app.send_message("server.files.metadata".to_string(), json!({"filename": file.filename}));
                                     app.printer.will_print_file = None;
                                 }
                             }

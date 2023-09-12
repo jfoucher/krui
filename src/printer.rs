@@ -31,6 +31,18 @@ pub struct Homed {
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+pub struct FileMetadata {
+    pub size: u64,
+    pub slicer: String,
+    pub layer_height: f64,
+    pub first_layer_height: f64,
+    pub object_height: f64,
+    pub filament_total: f64,
+    pub estimated_time: f64,
+
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct PrintStats {
     pub filename: String,
     pub total_duration: f64,
@@ -38,6 +50,31 @@ pub struct PrintStats {
     pub filament_used: f64,
     pub total_layers: i64,
     pub current_layer: i64,
+    pub progress: f64,
+    pub file: FileMetadata,
+}
+
+impl PrintStats {
+    pub fn new() -> PrintStats {
+        PrintStats {
+            filename: "".to_string(),
+            total_duration: 0.0,
+            print_duration: 0.0,
+            filament_used: 0.0,
+            total_layers: 0,
+            current_layer: 0,
+            progress: 0.0,
+            file: FileMetadata {
+                size: 0,
+                slicer: "".to_string(),
+                layer_height: 0.0,
+                first_layer_height: 0.0,
+                object_height: 0.0,
+                filament_total: 0.0,
+                estimated_time: 0.0,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
@@ -214,6 +251,17 @@ impl Printer {
                 }
             }
         }
+        if let Some(sdcard) = data.get("virtual_sdcard") {
+            if let Some(state) = sdcard.get("progress") {
+                if let Some(s) = state.as_f64() {
+
+                    if let Some(mut cp) = self.current_print.clone() {
+                        cp.progress = s;
+                        self.current_print = Some(cp);
+                    }
+                }
+            }
+        }
         if let Some(print_stats) = data.get("print_stats") {
             if let Some(state) = print_stats.get("state") {
                 if let Some(s) = state.as_str() {
@@ -221,14 +269,7 @@ impl Printer {
                 }
             }
             if status.print_state == "printing" {
-                let mut current_print = PrintStats {
-                    filename: "".to_string(),
-                    total_duration: 0.0,
-                    print_duration: 0.0,
-                    filament_used: 0.0,
-                    total_layers: 0,
-                    current_layer: 0,
-                };
+                let mut current_print = PrintStats::new();
                 
                 if let Some(cp) = &self.current_print {
                     current_print = cp.clone();
