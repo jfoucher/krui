@@ -5,7 +5,7 @@ use chrono::DateTime;
 use itertools::Step;
 use log4rs::append::rolling_file::LogFile;
 
-use crate::ui::stateful_list::StatefulList;
+use crate::{ui::stateful_list::StatefulList, app::HistoryItem};
 
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
@@ -13,6 +13,8 @@ pub struct Toolhead {
     pub position: Position,
     pub homed: Homed,
     pub fan: Fan,
+    pub speed: f64,
+    pub extruder_velocity: f64,
 }
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct Position {
@@ -26,6 +28,16 @@ pub struct Homed {
     pub y: bool,
     pub z: bool,
     pub qgl: bool,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+pub struct PrintStats {
+    pub filename: String,
+    pub total_duration: f64,
+    pub print_duration: f64,
+    pub filament_used: f64,
+    pub total_layers: i64,
+    pub current_layer: i64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
@@ -78,7 +90,8 @@ pub struct Printer {
     pub status: PrinterStatus,
     pub toolhead: Toolhead,
     pub sysload: f64,
-    pub printing_file: Option<String>,
+    pub will_print_file: Option<HistoryItem>,
+    pub current_print: Option<PrintStats>,
 }
 
 impl Printer {
@@ -101,14 +114,43 @@ impl Printer {
                     z: 0.0,
                 }, 
                 homed: Homed { x: false, y: false, z: false, qgl: false },
-                fan: Fan { speed: 0.0 }
+                fan: Fan { speed: 0.0 },
+                speed: 0.0,
+                extruder_velocity: 0.0,
             },
             sysload: 0.0,
-            printing_file: None,
+            will_print_file: None,
+            current_print: None,
         }
     }
 
     pub fn update(&mut self, data: serde_json::Value) {
+        if let Some(motion) = data.get("motion_report") {
+            log::info!("motion: {:?}", motion);
+            if let Some(position) = motion.get("live_position") {
+                if let Some(x) = position.get(0) {
+                    self.toolhead.position.x = x.as_f64().unwrap();
+                }
+                if let Some(y) = position.get(1) {
+                    self.toolhead.position.y = y.as_f64().unwrap();
+                }
+                if let Some(z) = position.get(2) {
+                    self.toolhead.position.z = z.as_f64().unwrap();
+                }
+            }
+            if let Some(speed) = motion.get("live_velocity") {
+                if let Some(s) = speed.as_f64() {
+                    self.toolhead.speed = s;
+                }
+            }
+
+            if let Some(speed) = motion.get("live_extruder_velocity") {
+                if let Some(s) = speed.as_f64() {
+                    self.toolhead.extruder_velocity = s;
+                }
+            }
+        }
+
         if let Some(heaters) = data.get("heaters") {
             if let Some(available_heaters) = heaters.get("available_heaters") {
                 // add heater to HashMap of heaters, with blank heaters
@@ -178,6 +220,60 @@ impl Printer {
                     status.print_state = s.to_string();
                 }
             }
+            if status.print_state == "printing" {
+                let mut current_print = PrintStats {
+                    filename: "".to_string(),
+                    total_duration: 0.0,
+                    print_duration: 0.0,
+                    filament_used: 0.0,
+                    total_layers: 0,
+                    current_layer: 0,
+                };
+                
+                if let Some(cp) = &self.current_print {
+                    current_print = cp.clone();
+                }
+                
+                // Set file data in main view
+                if let Some(filename) = print_stats.get("filename") {
+                    if let Some(f) = filename.as_str() {
+                        current_print.filename = f.to_string();
+                    }
+                }
+                if let Some(total_duration) = print_stats.get("total_duration") {
+                    if let Some(f) = total_duration.as_f64() {
+                        current_print.total_duration = f;
+                    }
+                }
+                if let Some(print_duration) = print_stats.get("print_duration") {
+                    if let Some(f) = print_duration.as_f64() {
+                        current_print.print_duration = f;
+                    }
+                }
+                if let Some(filament_used) = print_stats.get("filament_used") {
+                    if let Some(f) = filament_used.as_f64() {
+                        current_print.filament_used = f;
+                    }
+                }
+                if let Some(info) = print_stats.get("info") {
+                    log::info!("info: {:?}", info);
+                    if let Some(total_layers) = info.get("total_layer") {
+                        if let Some(f) = total_layers.as_i64() {
+                            current_print.total_layers = f;
+                        }
+                    }
+                    if let Some(current_layer) = info.get("current_layer") {
+                        if let Some(f) = current_layer.as_i64() {
+                            current_print.current_layer = f;
+                        }
+                    }
+                }
+
+
+                self.current_print = Some(current_print);
+            } else {
+                self.current_print = None;
+            }
         }
         // TODO make this optional
         if let Some(ks) = data.as_object() {
@@ -213,13 +309,23 @@ impl Printer {
         let mut homed = self.toolhead.homed.clone();
         if let Some(toolhead) = data.get("toolhead") {
             if let Some(homes) = toolhead.get("homed_axes") {
+                log::info!("homed_axes: {:?}", homes);
                 if let Some(axes) = homes.as_str() {
                     let ax = String::from(axes);
                     if ax.contains("x") {
                         homed.x = true;
+                    } else {
+                        homed.x = false;
+                    }
+                    if ax.contains("y") {
+                        homed.y = true;
+                    } else {
+                        homed.y = false;
                     }
                     if ax.contains("z") {
                         homed.z = true;
+                    } else {
+                        homed.z = false;
                     }
                 }
             }

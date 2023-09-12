@@ -14,7 +14,7 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                         },
                         MainTabWidget::History => {
                             // Cancel printing
-                            app.printer.printing_file = None;
+                            app.printer.will_print_file = None;
                         },
                     }
                 },
@@ -184,14 +184,14 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                             // If a history item is selected
                             if let Some(sel) = app.history.state.selected() {
                                 // set the file to print
-                                app.printer.printing_file = Some(app.history.items[sel].clone().filename);
+                                app.printer.will_print_file = Some(app.history.items[sel].clone());
                                 // deselect history item
                                 app.history.state.select(None);
                             } else {
                                 // No history item is selected, which means we are on the confirmation dialog
-                                if let Some(file) = &app.printer.printing_file {
-                                    app.send_message("printer.print.start".to_string(), json!({"filename": file}));
-                                    app.printer.printing_file = None;
+                                if let Some(file) = &app.printer.will_print_file {
+                                    app.send_message("printer.print.start".to_string(), json!({"filename": file.filename}));
+                                    app.printer.will_print_file = None;
                                 }
                             }
                         },

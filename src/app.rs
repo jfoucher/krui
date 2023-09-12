@@ -307,7 +307,7 @@ impl App {
                     self.ws_connected = false;
                     self.starting = true;
                     self.printer.connected = false;
-                    self.printer.status.state = "error".to_string();
+                    // self.printer.status.state = "error".to_string();
                     log::debug!("Doing init because of close message reset");
                     self.init();
                     return;
@@ -361,7 +361,7 @@ impl App {
     pub fn init(&mut self) {
         log::debug!("App init start");
         self.printer.connected = false;
-        self.printer.status.state = "error".to_string();
+        // self.printer.status.state = "error".to_string();
 
         self.rx = None;
         self.tx = None;
@@ -558,7 +558,9 @@ impl App {
                     }
                 }
             }
-            _ => {}
+            _ => {
+                log::warn!("unknown request method: {} with params: {:?}", method, request.params);
+            }
         }
     }
 

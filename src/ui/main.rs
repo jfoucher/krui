@@ -1,6 +1,6 @@
-use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List, Clear, BorderType, Padding}};
+use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List}};
 
-use crate::{app::{App, InputMode}, button::Button, printer::{Heater, HeaterType}};
+use crate::{app::{App, InputMode, HistoryItem}, button::Button, printer::{Heater, HeaterType}};
 use crate::markdown;
 use crate::ui::header;
 
@@ -28,7 +28,7 @@ If you have a mouse, you can also click on the shortcuts as if they were buttons
 
 You can also press `escape` to exit any modal window that may be open to return to the main screen.
 
-When you are in another screen, regular shortcuts are disabled. The only one that will always function is the `F8` key that will trigger an emergency stop. 
+When you are in another screen, regular shortcuts are disabled. The only one that will always function is the `F10` key that will trigger an emergency stop. 
 ";
 
 
@@ -88,65 +88,75 @@ where
         )
         .split(area);
 
-    let mut v = app.history.items.clone();
-    v.sort_by(|a, b| { b.end_time.total_cmp(&a.end_time)});
+    // only show history if not printing
+    // if app.printer.status.print_state != "printing" {
+    //     let mut v = app.history.items.clone();
+    //     v.sort_by(|a, b| { b.end_time.total_cmp(&a.end_time)});
 
-    // let v = vec![1,2,3];
-    let history:Vec<ListItem> = v.iter().enumerate().map(|(i, item)| { 
-        let status = match item.status.as_str() {
-            "cancelled" | "klippy_shutdown" => " ✕ ",
-            "completed" => " ✔ ",
-            _ => " ? ",
-        };
-        let mut selected = false;
-        if let Some(sel) = app.history.state.selected() {
-            selected = sel == i;
+    //     // TODO add item to history after print ends
+    //     let history:Vec<ListItem> = v.iter().enumerate().map(|(i, item)| { 
+    //         render_history(i, item, chunks[0], app)
+    //     }).collect();
+
+    //     let t_title = Span::styled(format!("{: ^width$}", "Job history", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
+
+    //     let p = List::new(history)
+    //         .block(Block::default()
+    //             .title(t_title)
+    //             .title_alignment(Alignment::Center)
+    //             .borders(Borders::NONE)
+    //         )
+    //         ;
+
+    //     f.render_stateful_widget(p, chunks[0], &mut app.history.state);
+    // } else {
+        
+
+        let flow = app.printer.toolhead.extruder_velocity * (1.75/2.0)*(1.75/2.0) * 3.14159;
+        
+        let mut layer = 0;
+        let mut total_layers = 0;
+
+        let mut print_duration = 0.0;
+        let mut filament_used = 0.0;
+        let mut filename = "Unknown".to_string();
+
+        if let Some(current_print) = &app.printer.current_print {
+            layer = current_print.current_layer;
+            total_layers = current_print.total_layers;
+            print_duration = current_print.print_duration;
+            filament_used = current_print.filament_used;
+            filename = current_print.filename.clone();
         }
-        let status_bg = match item.status.as_str() {
-            "cancelled" => Color::Red,
-            "completed" => Color::Green,
-            _ => Color::Gray,
-        };
-        let (hours, remainder) = (item.total_duration.round() as i64 / (60*60), item.total_duration.round() as i64 % (60*60));
-        let (minutes, seconds) = (remainder / 60, remainder % 60);
-        let mut time_str = format!("{}m{}s", minutes, seconds);
 
-        if hours > 0 {
-            time_str = format!("{}h{}", hours, time_str);
-        }
-        let fg = if selected {Color::DarkGray} else {Color::Gray};
-        let bg = if selected {Color::Gray} else {Color::DarkGray};
-        ListItem::new(
-            vec![
-                Line::from(
-                    vec![
-                        Span::styled(format!("{}", item.filename), Style::default().add_modifier(Modifier::BOLD).fg(fg).bg(bg)),
-                        Span::styled(format!("{}", " ".repeat(area.width as usize - 3 - item.filename.len())), Style::default().fg(fg).bg(bg)),
-                        Span::styled(format!("{}", status), Style::default().bg(status_bg).fg(Color::White)),
-                    ]
-                ),
-                Line::from(
-                    vec![
-                        Span::styled(format!("Filament: {:.0}mm Duration: {} {w: >w$}", item.filament_used, time_str, w = f.size().width as usize), Style::default().fg(fg).bg(bg))
-                    ]
-                ),
-            ]
-        )
-    }).collect();
+        let t_title = Span::styled(format!("{: ^width$}", format!("Printing {}", filename), width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
+        
 
+        let p = Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(format!("Layer {}/{} ", layer, total_layers), Style::default()),
+                Span::styled(format!("Print time: {:.0}s", print_duration), Style::default()),
+            ]),
+            Line::from(vec![
+                Span::styled(format!("Flow: {:.2}mm3/s Speed {:.0}mm/s", flow, app.printer.toolhead.speed), Style::default()),
+            ]),
+            Line::from(vec![
+                Span::styled(format!("Filament {:.0}mm", filament_used), Style::default()),
+            ]),
+            Line::from(vec![
+                Span::styled(format!("Position X: {:.2}mm Y: {:.2}mm Z: {:.2}mm", app.printer.toolhead.position.x, app.printer.toolhead.position.y, app.printer.toolhead.position.z), Style::default()),
+            ]),
+        ])
+            .block(Block::default()
+                .title(t_title)
+                .title_alignment(Alignment::Center)
+                .title_style(Style::default().add_modifier(style::Modifier::BOLD).fg(Color::White).bg(Color::Magenta))
+                .borders(Borders::NONE)
+            )
+            ;
 
-
-    let t_title = Span::styled(format!("{: ^width$}", "Job history", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
-
-    let p = List::new(history)
-        .block(Block::default()
-            .title(t_title)
-            .title_alignment(Alignment::Center)
-            .borders(Borders::NONE)
-        )
-        ;
-
-    f.render_stateful_widget(p, chunks[0], &mut app.history.state);
+        f.render_widget(p, chunks[0]);
+    // }
 
 
     let t_title = Span::styled(format!("{: ^width$}", "Temperatures", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
@@ -211,8 +221,8 @@ where
         .block(Block::default().borders(Borders::ALL).title("Temperature"));
         let btn = Paragraph::new(
             Line::from(vec![
-                Span::styled(format!("     {: <19}", "Enter<OK>"), Style::default().bg(Color::White).fg(Color::Black)),
-                Span::styled(format!("{: >19}     ", "Esc<Cancel>"), Style::default().bg(Color::White).fg(Color::Black)),
+                Span::styled(format!("     {: <19}", "<Enter>OK"), Style::default().bg(Color::White).fg(Color::Black)),
+                Span::styled(format!("{: >19}     ", "<Esc>Cancel"), Style::default().bg(Color::White).fg(Color::Black)),
             ])
         );
 
@@ -231,7 +241,7 @@ where
 
 
     // Starting a print
-    if app.printer.printing_file != None && app.printer.status.print_state != "printing".to_string() {
+    if app.printer.will_print_file != None && app.printer.status.print_state != "printing".to_string() {
         let title = Paragraph::new(
             Line::from(vec![
                 Span::styled("Confirm print start", Style::default().add_modifier(Modifier::BOLD))
@@ -240,18 +250,23 @@ where
 
         let text = Paragraph::new(vec![
             Line::from(vec![
-                Span::styled(format!("{: <48}", "This will start a print of "), Style::default()),
+                Span::styled("This will start a print of ", Style::default()),
+                Span::styled(app.printer.will_print_file.clone().unwrap().filename, Style::default().add_modifier(Modifier::BOLD)),
             ]),
             Line::from(vec![
-                Span::styled(format!("{: ^48}", app.printer.printing_file.clone().unwrap()), Style::default().add_modifier(Modifier::BOLD)),
+                
+            ]),
+            Line::from(vec![
+                Span::styled("Estimated time is ", Style::default()),
+                Span::styled(format!("{}", time_string_from_seconds(app.printer.will_print_file.clone().unwrap().estimated_time.round() as i64)), Style::default().add_modifier(Modifier::BOLD)),
             ]),
         ]
         );
         
         let buttons = Paragraph::new(
             Line::from(vec![
-                Span::styled(format!("     {: <19}", "Enter<OK>"), Style::default().bg(Color::White).fg(Color::Black)),
-                Span::styled(format!("{: >19}     ", "Esc<Cancel>"), Style::default().bg(Color::White).fg(Color::Black)),
+                Span::styled(format!("     {: <19}", "<Enter>OK"), Style::default().bg(Color::White).fg(Color::Black)),
+                Span::styled(format!("{: >19}     ", "<Esc>Cancel"), Style::default().bg(Color::White).fg(Color::Black)),
             ]),
         );
 
@@ -269,6 +284,55 @@ where
     header::draw_footer(f, chunks[3], buttons);
     
 
+}
+
+fn render_history<'a>(i: usize, item: &HistoryItem, area: Rect, app: &mut App) -> ListItem<'a> {
+    let status = match item.status.as_str() {
+        "cancelled" | "klippy_shutdown" => " ✕ ",
+        "completed" => " ✔ ",
+        _ => " ? ",
+    };
+    let mut selected = false;
+    if let Some(sel) = app.history.state.selected() {
+        selected = sel == i;
+    }
+    let status_bg = match item.status.as_str() {
+        "cancelled" => Color::Red,
+        "completed" => Color::Green,
+        _ => Color::Gray,
+    };
+
+    let time_str = time_string_from_seconds(item.total_duration.round() as i64);
+
+    let fg = if selected {Color::DarkGray} else {Color::Gray};
+    let bg = if selected {Color::Gray} else {Color::DarkGray};
+    ListItem::new(
+        vec![
+            Line::from(
+                vec![
+                    Span::styled(format!("{}", item.filename), Style::default().add_modifier(Modifier::BOLD).fg(fg).bg(bg)),
+                    Span::styled(" ".repeat(area.width as usize - 3 - item.filename.len()), Style::default().fg(fg).bg(bg)),
+                    Span::styled(format!("{}", status), Style::default().bg(status_bg).fg(Color::White)),
+                ]
+            ),
+            Line::from(
+                vec![
+                    Span::styled(format!("Filament: {:.0}mm Duration: {} {w: >w$}", item.filament_used, time_str, w = area.width as usize), Style::default().fg(fg).bg(bg))
+                ]
+            ),
+        ]
+    )
+}
+
+fn time_string_from_seconds(seconds: i64) -> String {
+    let (hours, remainder) = (seconds / (60*60), seconds % (60*60));
+    let (minutes, seconds) = (remainder / 60, remainder % 60);
+    let mut time_str = format!("{}m{}s", minutes, seconds);
+
+    if hours > 0 {
+        time_str = format!("{}h{}", hours, time_str);
+    }
+    time_str
 }
 
 fn heater_text<'a>(heater: Heater, selected: bool, width: u16) -> ListItem<'a> {

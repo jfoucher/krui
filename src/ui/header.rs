@@ -51,7 +51,7 @@ where
         Line::from(vec![
             Span::styled(c, Style::default().bg(bg).fg(Color::White)),
             Span::styled(" ", Style::default().bg(Color::Black)),
-            Span::styled(state, Style::default().bg(state_bg).fg(state_fg)),
+            Span::styled(format!(" {} ", state), Style::default().bg(state_bg).fg(state_fg)),
             Span::styled(" ", Style::default().bg(Color::Black)),
             Span::styled("Home", Style::default().fg(Color::White).bg(if h {Color::Green} else {Color::Red})),
             Span::styled(" ", Style::default().bg(Color::Black)),
