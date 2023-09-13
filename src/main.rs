@@ -6,7 +6,7 @@ use krui::handler::handle_key_events;
 use krui::tui::Tui;
 
 
-use std::io;
+use std::{io, env};
 
 use tui::backend::CrosstermBackend;
 use tui::Terminal;
@@ -17,8 +17,13 @@ use log4rs::encode::pattern::PatternEncoder;
 use log4rs::config::{Appender, Config, Root};
 
 fn main() -> AppResult<()> {
+    let args: Vec<String> = env::args().collect();
     // Create an application.
-    let mut app = App::new();
+    if args.len() < 2 {
+        println!("Usage: krui <server url>");
+        return Ok(());
+    }
+    let mut app = App::new(args[1].clone());
 
     let logfile = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{l} - {m}\n")))

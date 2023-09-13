@@ -1,6 +1,7 @@
 use std::{time::SystemTime};
 
 use chrono::{DateTime, Utc, Local};
+use curl::easy::Easy;
 use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List, Table, Row, Cell, TableState, Padding}};
 use websocket::header::Header;
 
@@ -8,7 +9,7 @@ use crate::{app::{App, InputMode, HistoryItem}, button::{Button, action_button},
 use crate::markdown;
 use crate::ui::header;
 use std::num::ParseIntError;
-
+use viuer::{print_from_file, Config};
 use super::modal;
 
 #[derive(Debug, PartialEq)]
@@ -135,6 +136,7 @@ where
         let mut eta = SystemTime::now();
         let mut speed = 0.0;
 
+        // http://192.168.1.11/server/files/gcodes/.thumbs/Flat-Whistle-5mm-400x300.png
         // TODO handle print paused
         if let Some(current_print) = &app.printer.current_print {
             layer = if current_print.current_layer > 0 { current_print.current_layer } else { 
@@ -155,6 +157,22 @@ where
             // state.print_stats.print_duration / getters.getPrintPercent - state.print_stats.print_duration
             estimate = if progress > 0.0 { print_duration / progress - print_duration } else { 0.0 };
             eta = SystemTime::now() + std::time::Duration::from_secs(slicer_estimate.round() as u64);
+
+            let max_height = chunks[0].height as u32 - 5;
+            let w = max_height * 4 / 3;
+            let conf = Config {
+                height: Some(max_height),
+                x: ((chunks[0].width as i32 ) / 2 - w as i32) as u16,
+                y: 6,
+                transparent: false,
+                ..Default::default()
+            };
+        
+        
+            match print_from_file(current_print.image.clone(), &conf) {
+                Ok(_) => {},
+                Err(_) => {},
+            };
         }
         let datetime: DateTime<Local> = eta.into();
 
@@ -208,6 +226,7 @@ where
         f.render_widget(p, chunks[0]);
     }
 
+    
 
     let t_title = Span::styled(format!("{: ^width$}", "Temperatures", width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
 

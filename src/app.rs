@@ -1,8 +1,10 @@
 use std::collections::HashMap;
-use std::error;
+use std::{error, fs};
+use std::fs::File;
 use std::io::ErrorKind;
 use std::net::TcpStream;
 use std::time::Duration;
+use curl::easy::Easy;
 use tui::widgets::ScrollbarState;
 use websocket::sync::Client;
 use websocket::ws::dataframe::DataFrame;
@@ -13,7 +15,7 @@ use std::thread::{self, JoinHandle};
 use rand::Rng;
 use serde_json::{Value, json};
 use chrono::prelude::*;
-
+use std::io::Write;
 
 use crate::printer::{Printer, Heater, PrintStats, FileMetadata};
 use crate::ui::stateful_list::StatefulList;
@@ -126,6 +128,7 @@ pub struct App {
     pub console_input: InputState,
     pub temperature_input: InputState,
     pub selected_heater: Option<Heater>,
+    pub server_url: String,
 }
 
 
@@ -150,21 +153,27 @@ impl Default for App {
             console_input: InputState { mode: InputMode::Normal, value: "".to_string(), cursor_position: 0 },
             temperature_input: InputState { mode: InputMode::Editing, value: "".to_string(), cursor_position: 1 },
             selected_heater: None,
+            server_url: "".to_string(),
         }
     }
 }
 
 impl App {
     /// Constructs a new instance of [`App`].
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(server_url: String) -> Self {
+        let mut app = Self::default();
+        app.server_url = server_url;
+        app
     }
 
     fn generate_client(&mut self, tx: Sender<Client<TcpStream>>) -> JoinHandle<()> {
+        let u = self.server_url.clone();
+        
         let get_client = thread::spawn(move || {
             log::debug!("Generating client");
             loop {
-                let url = Url::parse(CONNECTION).unwrap();
+                let server = format!("ws://{}/websocket", u);
+                let url = Url::parse(server.as_str()).unwrap();
                 let mut builder = ClientBuilder::from_url(&url);
                 match builder.connect_insecure() {
                     Ok(c) => {
@@ -450,6 +459,44 @@ impl App {
                         filament_total: response.result["filament_total"].as_f64().unwrap(),
                         estimated_time: response.result["estimated_time"].as_f64().unwrap(),
                     };
+                    let mut easy = Easy::new();
+                    let res = response.result;
+                    let u = self.server_url.clone();
+                    if let Some(thumbnails) = res.get("thumbnails") {
+                        let ths = thumbnails.as_array().unwrap();
+                        // Get last thumbnail as it seems to be the biggest one
+                        if let Some(thumbnail) = thumbnails.get(ths.len()-1) {
+                            log::info!("Thumbnail {:?}", thumbnail);
+                            if let Some(path) = thumbnail.get("relative_path") {
+                                let np = path.as_str().unwrap().clone();
+                                log::info!("Downloading thumbnail {:?}", format!("http://{}/server/files/gcodes/{}", u, np.clone()).as_str());
+                                easy.url(format!("http://{}/server/files/gcodes/{}", u, np.clone()).as_str()).unwrap();
+                                let filename = np.clone().to_string();
+                                let _ = fs::create_dir_all("cache/.thumbs/");
+                                let filepath = format!("cache/{}", filename);
+                                current_print.image = filepath.clone();
+                                let file = match File::create(filepath.clone()) {
+                                    Ok(f) => Some(f),
+                                    Err(e) => {
+                                        log::error!("Error creating file {:?}", e);
+                                        None
+                                    }
+                                };
+                                if let Some(mut handle) = file {
+                                    let mut transfer = easy.transfer();
+                                    transfer.write_function(|data| {
+                                        // write data to a temporary file
+
+                                        handle.write_all(data).unwrap();
+                                        
+                                        Ok(data.len())
+                                    }).unwrap();
+                                    transfer.perform().unwrap();
+                                }
+                            }
+                        }
+                    }
+                    
                     self.printer.current_print = Some(current_print);
                 }
                 "printer.objects.list" => {
@@ -503,6 +550,10 @@ impl App {
                 _ => {}
             }
         }
+    }
+
+    pub fn set_image(&mut self, data: Vec<u8>) {
+
     }
 
     pub fn add_job(&mut self, job: &Value) {
@@ -610,11 +661,11 @@ impl App {
     pub fn emergency_stop(&mut self) {
         self.send_message("printer.emergency_stop".to_string(), serde_json::Value::Object(serde_json::Map::new()));
         self.printer.status.state = "error".to_string();
+        self.printer.current_print = None;
         self.printer.connected = false;
         if let Some(tx) = &self.tx {
             let _ = tx.send(OwnedMessage::Close(Some(CloseData::new(1, "reset".to_string()))));
         }
-        
     }
 
     pub fn send_message(&mut self, method: String, params: Value ) {

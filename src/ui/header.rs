@@ -16,7 +16,7 @@ where
     .constraints(
         [
             Constraint::Min(20),
-            Constraint::Max(6)
+            Constraint::Max(30)
         ].as_ref()
     )
     .split(area);
@@ -61,8 +61,10 @@ where
             Span::styled(" ", Style::default().bg(Color::Black)),
             Span::styled("Fil", Style::default().fg(Color::White).bg(if app.printer.status.filament_switch {Color::Green} else {Color::Red})),
             Span::styled(" ", Style::default().bg(Color::Black)),
+            
             Span::styled(format!("Fan {:.0}", fan*100.0), Style::default().fg(Color::White).bg(if fan < 0.3 {Color::Green} else if fan < 0.6 {Color::LightRed } else {Color::Red})),
-
+            
+            
         ]),
     ];
 
@@ -75,8 +77,11 @@ where
 
     let s = vec![
         Line::from(vec![
+            Span::styled(" ", Style::default().bg(Color::Black)),
+            Span::styled(app.server_url.clone(), Style::default().bg(Color::Black)),
+            Span::styled(" ", Style::default().bg(Color::Black)),
             Span::styled(format!(" {:.2} ", app.printer.sysload), Style::default().bg(if app.printer.sysload < 0.3 {Color::Green} else if app.printer.sysload < 0.6 {Color::LightRed } else {Color::Red}).fg(Color::White)),
-        ]),
+        ]).alignment(Alignment::Right),
     ];
 
     let sl = Paragraph::new(s)

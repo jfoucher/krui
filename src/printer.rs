@@ -52,6 +52,7 @@ pub struct PrintStats {
     pub current_layer: i64,
     pub progress: f64,
     pub file: FileMetadata,
+    pub image: String,
 }
 
 impl PrintStats {
@@ -73,6 +74,7 @@ impl PrintStats {
                 filament_total: 0.0,
                 estimated_time: 0.0,
             },
+            image: "".to_string(),
         }
     }
 }

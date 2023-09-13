@@ -9,11 +9,11 @@ use tui::{
     backend::Backend,
     layout::{Alignment, Rect, Layout, Direction, Constraint},
     style::{Color, Style, Modifier, Stylize},
-    widgets::{Block, BorderType, Borders, Paragraph, Wrap, Clear, Padding, Widget, Table},
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap, Clear, Padding, Widget, Table, Row},
     Frame, text::{Line, Span},
 };
 
-use crate::app::App;
+use crate::{app::App, button::{Button, action_button}};
 use crate::app::Tab;
 
 
@@ -48,19 +48,31 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
     }
 
     if app.printer.connected == false && app.printer.status.state == "shutdown".to_string() {
-        let sl = Paragraph::new(format!("{: ^50}\n{}", format!("Klipper reports: {}", app.printer.status.state), format!("{}\nPress F10 to restart the firmware", app.printer.status.state_message)))
+        let title = Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(format!("Klipper reports: {}", app.printer.status.state), Style::default().bg(Color::White).fg(Color::Black).add_modifier(Modifier::BOLD)),
+            ]).alignment(Alignment::Center),
+        ]);
+        let text = Paragraph::new(app.printer.status.state_message.clone())
+        .wrap(Wrap {trim: false});
+
+        let restart: Button = Button::new("Restart".to_string(), Some("10".to_string()));
+        let btn = Table::new(vec![
+            Row::new(vec![
+                Line::from(action_button(restart)).alignment(Alignment::Center),
+
+            ])
+        ])
+        .widths(&[
+            Constraint::Percentage(100),
+        ])
         .block(Block::default()
-            .style(Style::default().bg(Color::White).fg(Color::Black))
-            
-            .borders(Borders::ALL)
-            .border_type(BorderType::Thick)
+            .borders(Borders::NONE)
+            .padding(Padding::horizontal(2))
         )
-        .wrap(Wrap {trim: false})
         ;
 
-        let area = Rect::new((frame.size().width - 50) / 2, (frame.size().height - 12) / 2, 50, 12);
-        frame.render_widget(Clear, area);
-        frame.render_widget(sl, area);
+        modal(frame, title, text, btn, None);
     }
 
     

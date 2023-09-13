@@ -12,8 +12,10 @@ websocket = "0.26.5"
 rand = "0.8.5"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-flume = { version = "0.10", default-features = false, features = ["spin", "select"] }
-itertools = "*"
-log4rs = "*"
-log = "*"
-chrono = "*"
+flume = { version = "0.11", default-features = false, features = ["spin", "select"] }
+itertools = "0.11"
+log4rs = "1.2"
+log = "0.4"
+chrono = "0.4"
+viuer = "0.6"
+curl = { version = "0.4", features = ["http2"] }
