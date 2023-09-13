@@ -23,7 +23,9 @@
 
 ## How To Use
 
-[Install rust and cargo](https://rustup.rs/) and then run `cargo install krui`
+[Install rust and cargo](https://rustup.rs/) and then run `cargo install krui` to install the application.
+
+You will then be able to run `krui 192.168.1.121` if your 3D printer is at that IP address.
 
 ## License
 
