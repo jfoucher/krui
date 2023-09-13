@@ -247,6 +247,29 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                         },
                         _ => {},
                     }
+                },
+                Tab::Toolhead => {
+                    let msg = match c {
+                        'x' | 'X' => {
+                            "G28 X"
+                        },
+                        'y' | 'Y' => {
+                            "G28 Y"
+                        },
+                        'z' | 'Z' => {
+                            "G28 Z"
+                        },
+                        'a' | 'A' => {
+                            "G28"
+                        },
+                        'q' | 'Q' => {
+                            "QUAD_GANTRY_LEVEL"
+                        },
+                        _ => {""}
+                    };
+                    if msg.len() > 0 {
+                        app.send_message("printer.gcode.script".to_string(), json!({"script": msg}));
+                    }
                 }
                 _ => {
                     
