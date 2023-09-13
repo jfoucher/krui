@@ -2,6 +2,7 @@
 name = "krui"
 version = "0.0.1"
 authors = ["Jonathan Foucher <jfoucher@gmail.com>"]
+description = "Klipper Remote User Interface. A TUI for the Moonraker API on Klipper enabled 3D printers."
 license = "MIT"
 edition = "2021"
 repository = "https://github.com/jfoucher/krui"
