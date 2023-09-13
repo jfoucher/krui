@@ -1,9 +1,14 @@
 [package]
 name = "krui"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["Jonathan Foucher <jfoucher@gmail.com>"]
 license = "MIT"
 edition = "2021"
+repository = "https://github.com/jfoucher/krui"
+keywords = ["3D printing", "klipper", "moonraker", "tui"]
+exclude = [
+    "img/*",
+]
 
 [dependencies]
 crossterm = "0.27.0"
