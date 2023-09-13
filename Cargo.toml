@@ -5,7 +5,7 @@ authors = ["Jonathan Foucher <jfoucher@gmail.com>"]
 license = "MIT"
 edition = "2021"
 repository = "https://github.com/jfoucher/krui"
-keywords = ["3D printing", "klipper", "moonraker", "tui"]
+keywords = ["3Dprinting", "klipper", "moonraker", "tui"]
 exclude = [
     "img/*",
 ]
