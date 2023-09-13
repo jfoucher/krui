@@ -189,6 +189,32 @@ impl Printer {
             }
         }
 
+        let mut status = self.status.clone();
+        if let Some(print_stats) = data.get("webhooks") {
+            if let Some(state) = print_stats.get("state") {
+                if let Some(s) = state.as_str() {
+                    status.state = s.to_string();
+                }
+            }
+            if let Some(state_msg) = print_stats.get("state_message") {
+                if let Some(s) = state_msg.as_str() {
+                    status.state_message = s.to_string();
+                }
+            }
+        }
+        if let Some(sdcard) = data.get("virtual_sdcard") {
+            if let Some(state) = sdcard.get("progress") {
+                if let Some(s) = state.as_f64() {
+
+                    if let Some(mut cp) = self.current_print.clone() {
+                        cp.progress = s;
+                        self.current_print = Some(cp);
+                    }
+                }
+            }
+        }
+
+
         if let Some(heaters) = data.get("heaters") {
             if let Some(available_heaters) = heaters.get("available_heaters") {
                 // add heater to HashMap of heaters, with blank heaters
@@ -225,6 +251,9 @@ impl Printer {
                 }
                 if let Some(pow) = heater_data.get("power") {
                     nh.power = pow.as_f64().unwrap();
+                    if status.state == "shutdown" {
+                        nh.power = 0.0;
+                    }
                 }
                 if let Some(pow) = heater_data.get("speed") {
                     nh.power = pow.as_f64().unwrap();
@@ -235,34 +264,9 @@ impl Printer {
                 new_heaters[i] = nh;
             }
         }
-        self.status.heaters.items = new_heaters;
+        status.heaters.items = new_heaters;
 
 
-
-        let mut status = self.status.clone();
-        if let Some(print_stats) = data.get("webhooks") {
-            if let Some(state) = print_stats.get("state") {
-                if let Some(s) = state.as_str() {
-                    status.state = s.to_string();
-                }
-            }
-            if let Some(state_msg) = print_stats.get("state_message") {
-                if let Some(s) = state_msg.as_str() {
-                    status.state_message = s.to_string();
-                }
-            }
-        }
-        if let Some(sdcard) = data.get("virtual_sdcard") {
-            if let Some(state) = sdcard.get("progress") {
-                if let Some(s) = state.as_f64() {
-
-                    if let Some(mut cp) = self.current_print.clone() {
-                        cp.progress = s;
-                        self.current_print = Some(cp);
-                    }
-                }
-            }
-        }
         if let Some(print_stats) = data.get("print_stats") {
             // log::info!("print_stats: {:?}", print_stats);
             if let Some(state) = print_stats.get("state") {

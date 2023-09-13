@@ -60,7 +60,6 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         let btn = Table::new(vec![
             Row::new(vec![
                 Line::from(action_button(restart)).alignment(Alignment::Center),
-
             ])
         ])
         .widths(&[
