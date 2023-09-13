@@ -9,7 +9,7 @@ use tui::{
     backend::Backend,
     layout::{Alignment, Rect, Layout, Direction, Constraint},
     style::{Color, Style, Modifier, Stylize},
-    widgets::{Block, BorderType, Borders, Paragraph, Wrap, Clear, Padding},
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap, Clear, Padding, Widget, Table},
     Frame, text::{Line, Span},
 };
 
@@ -68,7 +68,7 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
 
 }
 
-pub fn modal<'a, B>(f: &mut Frame<B>, title: Paragraph, text: Paragraph, buttons: Paragraph, input: Option<Paragraph>) -> Rc<[Rect]>
+pub fn modal<'a, B>(f: &mut Frame<B>, title: Paragraph, text: Paragraph, buttons: Table, input: Option<Paragraph>) -> Rc<[Rect]>
 where
     B: Backend,
 {

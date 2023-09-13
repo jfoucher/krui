@@ -163,7 +163,6 @@ impl Printer {
 
     pub fn update(&mut self, data: serde_json::Value) {
         if let Some(motion) = data.get("motion_report") {
-            log::info!("motion: {:?}", motion);
             if let Some(position) = motion.get("live_position") {
                 if let Some(x) = position.get(0) {
                     self.toolhead.position.x = x.as_f64().unwrap();
@@ -263,6 +262,7 @@ impl Printer {
             }
         }
         if let Some(print_stats) = data.get("print_stats") {
+            // log::info!("print_stats: {:?}", print_stats);
             if let Some(state) = print_stats.get("state") {
                 if let Some(s) = state.as_str() {
                     status.print_state = s.to_string();
@@ -297,7 +297,6 @@ impl Printer {
                     }
                 }
                 if let Some(info) = print_stats.get("info") {
-                    log::info!("info: {:?}", info);
                     if let Some(total_layers) = info.get("total_layer") {
                         if let Some(f) = total_layers.as_i64() {
                             current_print.total_layers = f;

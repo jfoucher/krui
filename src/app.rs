@@ -103,7 +103,7 @@ pub struct InputState {
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
-const CONNECTION: &'static str = "ws://192.168.1.11/websocket";
+const CONNECTION: &'static str = "ws://voron.ink/websocket";
 /// Application.
 
 pub struct App {
@@ -435,13 +435,12 @@ impl App {
                     }
                 }
                 "server.files.metadata" => {
-                    log::debug!("server.files.metadata {:?}", response.result);
+                    log::info!("server.files.metadata {}", serde_json::to_string(&response.result).unwrap());
                     let mut current_print = PrintStats::new();
                 
                     if let Some(cp) = &self.printer.current_print {
                         current_print = cp.clone();
                     }
-
                     current_print.file = FileMetadata {
                         size: response.result["size"].as_u64().unwrap(),
                         slicer: response.result["slicer"].as_str().unwrap().to_string(),
@@ -470,65 +469,85 @@ impl App {
                     // self.printer.stats.state = "shutdown".to_string();
                 }
                 "printer.objects.query" => {
-                    self.printer.update(response.result.get("status").unwrap().clone());
-                }
+                    let data = response.result.get("status").unwrap().clone();
+                    self.printer.update(data.clone());
+
+                    if let Some(print_stats) = data.get("print_stats") {
+                        
+                        if let Some(state) = print_stats.get("state") {
+                            
+                            if state.as_str().unwrap() == "printing" {
+                                if let Some(filename) = print_stats.get("filename") {
+                                    log::info!("filename {:?}", filename.as_str().unwrap());
+                                    // If status is printing, get metadata
+                                    self.send_message("server.files.metadata".to_string(), json!({"filename": filename.as_str().unwrap()}));
+               
+                                }
+                            }
+                        }
+                    }
+                },
                 "server.history.list" => {
                     if let Some(jobs) = response.result.get("jobs") {
 
                         if jobs.is_array() {
                             for job in jobs.as_array().unwrap() {
                                 // println!("{:?}", job);
-                                if let Some(filename) = job.get("filename") {
-                                    let filename = filename.as_str().unwrap().to_string();
-                                    if let Some(_) = self.history.items.iter().find(|i| {i.filename == filename}) {
-                                        continue;
-                                    }
-                                    let mut h = HistoryItem {
-                                        filename: filename.clone(),
-                                        status: "".to_string(),
-                                        end_time: 0.0,
-                                        estimated_time: 0.0,
-                                        total_duration: 0.0,
-                                        filament_used: 0.0,
-                                    };
-                                    if let Some(status) = job.get("status") {
-                                        if let Some(s) = status.as_str() {
-                                            h.status = s.to_string();
-                                        }
-                                    }
-                                    if let Some(end_time) = job.get("end_time") {
-                                        if let Some(s) = end_time.as_f64() {
-                                            h.end_time = s;
-                                        }
-                                    }
-                                    if let Some(total_duration) = job.get("total_duration") {
-                                        if let Some(s) = total_duration.as_f64() {
-                                            h.total_duration = s;
-                                        }
-                                    }
-                                    if let Some(filament_used) = job.get("filament_used") {
-                                        if let Some(s) = filament_used.as_f64() {
-                                            h.filament_used = s;
-                                        }
-                                    }
-
-                                    if let Some(metadata) = job.get("metadata") {
-                                        if let Some(estimated_time) = metadata.get("estimated_time") {
-                                            if let Some(s) = estimated_time.as_f64() {
-                                                h.estimated_time = s;
-                                            }
-                                        }
-                                    }
-                                    self.history.add(h);
-                                }
-                                self.history.state.select(Some(0));
+                                self.add_job(job);
                             }
+                            self.history.state.select(Some(0));
                         }
                     }
                 },
 
                 _ => {}
             }
+        }
+    }
+
+    pub fn add_job(&mut self, job: &Value) {
+        if let Some(filename) = job.get("filename") {
+            let filename = filename.as_str().unwrap().to_string();
+            if let Some(_) = self.history.items.iter().find(|i| {i.filename == filename}) {
+                return;
+            }
+            let mut h = HistoryItem {
+                filename: filename.clone(),
+                status: "".to_string(),
+                end_time: 0.0,
+                estimated_time: 0.0,
+                total_duration: 0.0,
+                filament_used: 0.0,
+            };
+            if let Some(status) = job.get("status") {
+                if let Some(s) = status.as_str() {
+                    h.status = s.to_string();
+                }
+            }
+            if let Some(end_time) = job.get("end_time") {
+                if let Some(s) = end_time.as_f64() {
+                    h.end_time = s;
+                }
+            }
+            if let Some(total_duration) = job.get("total_duration") {
+                if let Some(s) = total_duration.as_f64() {
+                    h.total_duration = s;
+                }
+            }
+            if let Some(filament_used) = job.get("filament_used") {
+                if let Some(s) = filament_used.as_f64() {
+                    h.filament_used = s;
+                }
+            }
+
+            if let Some(metadata) = job.get("metadata") {
+                if let Some(estimated_time) = metadata.get("estimated_time") {
+                    if let Some(s) = estimated_time.as_f64() {
+                        h.estimated_time = s;
+                    }
+                }
+            }
+            self.history.add(h);
         }
     }
 
@@ -540,6 +559,18 @@ impl App {
                 log::debug!("notify_klippy_shutdown");
                 self.printer.connected = false;
             },
+            "notify_history_changed" => {
+                if let Some(params) = request.params {
+                    if let Some(action) = params.get("action") {
+                        if action.as_str().unwrap() == "added" {
+                            if let Some(job) = params.get("job") {
+                                self.add_job(job);
+                                self.history.state.select(Some(0));
+                            }
+                        }
+                    }
+                }
+            },
             "notify_klippy_ready" => {
                 log::debug!("notify_klippy_ready");
                 self.printer.connected = true;
@@ -550,13 +581,6 @@ impl App {
                 if let Some(params) = request.params {
                     self.printer.update(params.get(0).unwrap().clone());
                 }
-                
-                // TODO update PrinterStatus struct
-                // let path = "data.json";
-                // let mut output = File::create(path).unwrap();
-                // let line = serde_json::to_string_pretty(&self.printer.status).unwrap();
-                // write!(output, "{}", line);
-               
             },
             "notify_gcode_response" => {
                 // self.printer.status.gcodes.push(value);

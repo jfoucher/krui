@@ -31,7 +31,7 @@ pub fn footer_button<'a>(button: Button) -> Line<'a> {
 }
 pub fn action_button<'a>(button: Button) -> Vec<Span<'a>> {
     vec![
-        Span::styled(format!(" {}", button.shortcut), Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD)),
-        Span::styled(format!("{} ", button.text), Style::default().fg(Color::White).bg(Color::LightBlue)),
+        Span::styled(format!(" {}", button.shortcut), Style::default().bg(Color::Yellow).fg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled(format!("{} ", button.text), Style::default().fg(Color::White).bg(Color::LightYellow)),
     ]
 }

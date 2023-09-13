@@ -1,43 +1,44 @@
-use std::time::SystemTime;
+use std::{time::SystemTime};
 
 use chrono::{DateTime, Utc, Local};
-use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List, Table, Row, Cell, TableState}};
+use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List, Table, Row, Cell, TableState, Padding}};
 use websocket::header::Header;
 
-use crate::{app::{App, InputMode, HistoryItem}, button::Button, printer::{Heater, HeaterType}};
+use crate::{app::{App, InputMode, HistoryItem}, button::{Button, action_button}, printer::{Heater, HeaterType}};
 use crate::markdown;
 use crate::ui::header;
+use std::num::ParseIntError;
 
 use super::modal;
 
-const MAIN_HELP_TEXT: &str = "# KLUI Help
+#[derive(Debug, PartialEq)]
+enum Error {
+    Int(ParseIntError),
+    Unicode(u32),
+}
 
-KLUI is a simple controller for a klipper-enabled 3D printer. It requires the Moonraker server as well.
+const MAIN_HELP_TEXT: &str = "
+This is the main tab. When the printer is idle, the top panel displays the history of past prints.
+When the printer is printing, it displays the current print status.
 
-## Features
+The panel below that show the heater temperatures as well as the temperature fans temperatures if some are defined in your configuration.
 
-- View all the reported temperatures and change their targets, for both heaters and temperature fans.
-- Home X, Y and Z axes (I do not have another type of printer to test)
-- View the position of X Y and Z axes
-- Do a quad gantry leveling procedure if your printer supports it
-- Show the status of the printer (printing or not, homed, QGL, filament sensors, steppers active, system load)
-- View this help text
+## Print history
+Each item shows the filename, the filament used and the duration of the last print for that file. The end status of the print is also shown at the right. ✔ means the print suceeded. ✕ means the print failed or was cancelled.
+You can select an item by using the up and down arrow keys. Pressing enter will open a confirmation dialog to start a print for that file.
 
-## Shortcuts
-Some shortcuts have the first letter highlighted, representing the key to be pressed to trigger the action.
+## Temperatures
+Use the <TAB> key to move between the history panel and the temperatures panel. The temperatures panel shows the current temperature of each heater as well as the target temperature. The bar below shows the power of the heater. The color of the title indicates the type of heater. Magenta for a heater, red for a temperature fan.
+Arrow keys can be used to select a heater.
+Pressing <Enter> on a selected heater will open a dialog to set the target temperature for that heater.
 
-Most shortcuts are displayed in the app footer, the number represents the function key to press to launch the action.
-For example, press the `F2` key to exit the app. The will popup a confirmation dialog. press `q` to quit, or `c` to cancel.
-If you have a mouse, you can also click on the shortcuts as if they were buttons to trigger the action.
+## Printing
 
-You can also press `escape` to exit any modal window that may be open to return to the main screen.
-
-When you are in another screen, regular shortcuts are disabled. The only one that will always function is the `F10` key that will trigger an emergency stop. 
 ";
 
 
 
-pub fn draw_main_help<'a, B>(f: &mut Frame<B>, _: &mut App, area: Rect)
+pub fn draw_main_help<'a, B>(f: &mut Frame<B>, app: &mut App, area: Rect)
 where
     B: Backend,
 {
@@ -66,6 +67,11 @@ where
 
     let buttons = vec![
         Button::new("Close".to_string(), Some("1".to_string())),
+        Button::new("Quit".to_string(), Some("2".to_string())),
+        Button::new("Toolhead".to_string(), Some("3".to_string())),
+        Button::new("Extruder".to_string(), Some("4".to_string())),
+        Button::new("Console".to_string(), Some("5".to_string())),
+        Button::new(if app.printer.connected {"STOP".to_string()} else {"Restart".to_string()}, Some("10".to_string())),
     ];
     header::draw_footer(f, chunks[1], buttons);
 
@@ -120,46 +126,55 @@ where
         let mut total_layers = 0;
 
         let mut print_duration = 0.0;
+        let mut total_duration = 0.0;
         let mut filament_used = 0.0;
         let mut filename = "Unknown".to_string();
         let mut progress = 0.0;
         let mut estimate: f64 = 0.0;
         let mut slicer_estimate = 0.0;
         let mut eta = SystemTime::now();
+        let mut speed = 0.0;
 
+        // TODO handle print paused
         if let Some(current_print) = &app.printer.current_print {
-            layer = current_print.current_layer;
-            total_layers = current_print.total_layers;
+            layer = if current_print.current_layer > 0 { current_print.current_layer } else { 
+                ((app.printer.toolhead.position.z - current_print.file.first_layer_height as f64) / current_print.file.layer_height as f64 + 1.0).ceil() as i64
+            };
+            total_layers = if current_print.total_layers > 0 { current_print.total_layers } else { 
+                ((current_print.file.object_height - current_print.file.first_layer_height as f64) / current_print.file.layer_height as f64 + 1.0).ceil() as i64
+            };
+
+            speed = app.printer.toolhead.speed;
+
             print_duration = current_print.print_duration;
+            total_duration = current_print.total_duration;
             filament_used = if current_print.filament_used > 0.0 { current_print.filament_used } else { 0.0 };
             filename = current_print.filename.clone();
             progress = if current_print.progress > 0.0 { current_print.progress } else { 0.0 };
             slicer_estimate = current_print.file.estimated_time - print_duration;
             // state.print_stats.print_duration / getters.getPrintPercent - state.print_stats.print_duration
-            estimate = print_duration / progress - print_duration;
-            eta = SystemTime::now() + std::time::Duration::from_secs(estimate.round() as u64);
-            
-            
+            estimate = if progress > 0.0 { print_duration / progress - print_duration } else { 0.0 };
+            eta = SystemTime::now() + std::time::Duration::from_secs(slicer_estimate.round() as u64);
         }
         let datetime: DateTime<Local> = eta.into();
 
 
-        let t_title = Span::styled(format!("{: ^width$}", format!("Printing {}", filename), width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
+        let t_title = Span::styled(format!("{: ^width$}", format!("Printing {} ({:.0}%)", filename, progress*100.0), width = f.size().width as usize), Style::default().add_modifier(Modifier::BOLD).fg(Color::White).bg(Color::Magenta));
 
 
-        ;
+        
         let p = Table::new(vec![
             Row::new(vec![
                 Line::from("Layer").alignment(Alignment::Center),
-                Line::from("Progress").alignment(Alignment::Center),
+                Line::from("Speed").alignment(Alignment::Center),
                 Line::from("Filament").alignment(Alignment::Center),
                 Line::from("Flow").alignment(Alignment::Center),
             ]).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
             Row::new(vec![
                 Line::from(format!("{}/{} ", layer, total_layers)).alignment(Alignment::Center),
-                Line::from(format!("{:.0} %", progress*100.0)).alignment(Alignment::Center),
+                Line::from(format!("{:.0}mm/s", speed)).alignment(Alignment::Center),
                 Line::from(format!("{:.0}mm", filament_used)).alignment(Alignment::Center),
-                Line::from(format!("{:.0}mm3/s", flow)).alignment(Alignment::Center),
+                Line::from(format!("{:.1}mm3/s", flow)).alignment(Alignment::Center),
             ]),
 
             Row::new(vec![
@@ -169,10 +184,10 @@ where
                 Line::from("ETA").alignment(Alignment::Center),
             ]).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
             Row::new(vec![
-                Line::from(format!("{}", time_string_from_seconds(print_duration.round() as i64))).alignment(Alignment::Center),
-                Line::from(format!("{}", time_string_from_seconds(slicer_estimate.round() as i64))).alignment(Alignment::Center),
                 Line::from(format!("{}", time_string_from_seconds(estimate.round() as i64))).alignment(Alignment::Center),
-                Line::from(format!("{}", datetime.format("%T"))).alignment(Alignment::Center),
+                Line::from(format!("{}", time_string_from_seconds(slicer_estimate.round() as i64))).alignment(Alignment::Center),
+                Line::from(format!("{}", time_string_from_seconds(total_duration.round() as i64))).alignment(Alignment::Center),
+                Line::from(format!("{}", datetime.format("%H:%M"))).alignment(Alignment::Center),
             ]),
         ])
         .widths(&[
@@ -254,12 +269,24 @@ where
         })
         .blue()
         .block(Block::default().borders(Borders::ALL).title("Temperature"));
-        let btn = Paragraph::new(
-            Line::from(vec![
-                Span::styled(format!("     {: <19}", "<Enter>OK"), Style::default().bg(Color::White).fg(Color::Black)),
-                Span::styled(format!("{: >19}     ", "<Esc>Cancel"), Style::default().bg(Color::White).fg(Color::Black)),
+
+        let ok: Button = Button::new("OK".to_string(), Some("󰌑 ".to_string()));
+        let cancel = Button::new("Cancel".to_string(), Some("󱊷 ".to_string()));
+        let btn = Table::new(vec![
+            Row::new(vec![
+                Line::from(action_button(ok)).alignment(Alignment::Left),
+                Line::from(action_button(cancel)).alignment(Alignment::Right),
             ])
-        );
+        ])
+        .widths(&[
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ])
+        .block(Block::default()
+            .borders(Borders::NONE)
+            .padding(Padding::horizontal(2))
+        )
+        ;
 
         let chunks = modal(f, title, text, btn, Some(input));
         
@@ -298,14 +325,25 @@ where
         ]
         );
         
-        let buttons = Paragraph::new(
-            Line::from(vec![
-                Span::styled(format!("     {: <19}", "<Enter>OK"), Style::default().bg(Color::White).fg(Color::Black)),
-                Span::styled(format!("{: >19}     ", "<Esc>Cancel"), Style::default().bg(Color::White).fg(Color::Black)),
-            ]),
-        );
+        let ok: Button = Button::new("OK".to_string(), Some("󰌑 ".to_string()));
+        let cancel = Button::new("Cancel".to_string(), Some("󱊷 ".to_string()));
+        let btn = Table::new(vec![
+            Row::new(vec![
+                Line::from(action_button(ok)).alignment(Alignment::Left),
+                Line::from(action_button(cancel)).alignment(Alignment::Right),
+            ])
+        ])
+        .widths(&[
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ])
+        .block(Block::default()
+            .borders(Borders::NONE)
+            .padding(Padding::horizontal(2))
+        )
+        ;
 
-        modal(f, title, text, buttons, None);
+        modal(f, title, text, btn, None);
     }
 
     let buttons = vec![
@@ -332,7 +370,8 @@ fn render_history<'a>(i: usize, item: &HistoryItem, area: Rect, app: &mut App) -
         selected = sel == i;
     }
     let status_bg = match item.status.as_str() {
-        "cancelled" => Color::Red,
+        "klippy_shutdown" => Color::Red,
+        "cancelled" => Color::Yellow,
         "completed" => Color::Green,
         _ => Color::Gray,
     };
@@ -362,7 +401,7 @@ fn render_history<'a>(i: usize, item: &HistoryItem, area: Rect, app: &mut App) -
 fn time_string_from_seconds(seconds: i64) -> String {
     let (hours, remainder) = (seconds / (60*60), seconds % (60*60));
     let (minutes, seconds) = (remainder / 60, remainder % 60);
-    let mut time_str = format!("{}m{}s", minutes, seconds);
+    let mut time_str = format!("{}m{:0>2}s", minutes, seconds);
 
     if hours > 0 {
         time_str = format!("{}h{}", hours, time_str);
