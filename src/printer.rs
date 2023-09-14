@@ -1,14 +1,8 @@
-
-use std::{collections::HashMap, time::SystemTime};
-
 use chrono::DateTime;
-use itertools::Step;
-use log4rs::append::rolling_file::LogFile;
-
 use crate::{ui::stateful_list::StatefulList, app::HistoryItem};
 
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Toolhead {
     pub position: Position,
     pub homed: Homed,
@@ -16,13 +10,13 @@ pub struct Toolhead {
     pub speed: f64,
     pub extruder_velocity: f64,
 }
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Position {
     pub x: f64,
     pub y: f64,
     pub z: f64,
 }
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Homed {
     pub x: bool,
     pub y: bool,
@@ -30,7 +24,7 @@ pub struct Homed {
     pub qgl: bool,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FileMetadata {
     pub size: u64,
     pub slicer: String,
@@ -42,7 +36,7 @@ pub struct FileMetadata {
 
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrintStats {
     pub filename: String,
     pub total_duration: f64,
@@ -79,26 +73,22 @@ impl PrintStats {
     }
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Fan {
-    #[serde(default = "default_float")]
     pub speed: f64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HeaterType {
     Heater,
     TemperatureFan,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Heater {
     pub name: String,
-    #[serde(default = "default_float")]
     pub temperature: f64,
-    #[serde(default = "default_float")]
     pub target: f64,
-    #[serde(default = "default_float")]
     pub power: f64,
     pub heater_type: HeaterType,
 }
@@ -456,7 +446,7 @@ mod tests {
     #[test]
     fn test_adding_new_heater_adds_heater(){
         let mut p = Printer::new();
-        let mut data = serde_json::json!({
+        let data = serde_json::json!({
             "heaters": {
                 "available_heaters": ["heater_bed", "extruder"]
             }
@@ -494,7 +484,7 @@ mod tests {
     #[test]
     fn test_add_temperature_fan_adds_temperature_fan() {
         let mut p = Printer::new();
-        let mut data = serde_json::json!({
+        let data = serde_json::json!({
             "heaters": {
                 "available_sensors": ["temperature_fan test_fan"]
             }
@@ -533,7 +523,7 @@ mod tests {
     #[test]
     fn test_updating_filament_sensor_sets_filament_switch() {
         let mut p = Printer::new();
-        let mut data = serde_json::json!({
+        let data = serde_json::json!({
             "filament_switch_sensor test_sensor": {
                 "filament_detected": true
             }

@@ -1,22 +1,15 @@
-use std::{time::SystemTime};
+use std::time::SystemTime;
 
-use chrono::{DateTime, Utc, Local};
-use curl::easy::Easy;
-use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List, Table, Row, Cell, TableState, Padding}};
-use websocket::header::Header;
+use chrono::{DateTime, Local};
+
+use tui::{Frame, prelude::*, widgets::{Paragraph, Block, Borders, Wrap, ListItem, List, Table, Row, Padding}};
+
 
 use crate::{app::{App, InputMode, HistoryItem}, button::{Button, action_button}, printer::{Heater, HeaterType}};
 use crate::markdown;
 use crate::ui::header;
-use std::num::ParseIntError;
 use viuer::{print_from_file, Config};
 use super::modal;
-
-#[derive(Debug, PartialEq)]
-enum Error {
-    Int(ParseIntError),
-    Unicode(u32),
-}
 
 const MAIN_HELP_TEXT: &str = "
 This is the main tab. When the printer is idle, the top panel displays the history of past prints.
@@ -126,7 +119,7 @@ where
         let mut layer = 0;
         let mut total_layers = 0;
 
-        let mut print_duration = 0.0;
+
         let mut total_duration = 0.0;
         let mut filament_used = 0.0;
         let mut filename = "Unknown".to_string();
@@ -136,7 +129,6 @@ where
         let mut eta = SystemTime::now();
         let mut speed = 0.0;
 
-        // http://192.168.1.11/server/files/gcodes/.thumbs/Flat-Whistle-5mm-400x300.png
         // TODO handle print paused
         if let Some(current_print) = &app.printer.current_print {
             layer = if current_print.current_layer > 0 { current_print.current_layer } else { 
@@ -148,7 +140,7 @@ where
 
             speed = app.printer.toolhead.speed;
 
-            print_duration = current_print.print_duration;
+            let print_duration = current_print.print_duration;
             total_duration = current_print.total_duration;
             filament_used = if current_print.filament_used > 0.0 { current_print.filament_used } else { 0.0 };
             filename = current_print.filename.clone();

@@ -9,7 +9,7 @@ use tui::{
     backend::Backend,
     layout::{Alignment, Rect, Layout, Direction, Constraint},
     style::{Color, Style, Modifier, Stylize},
-    widgets::{Block, BorderType, Borders, Paragraph, Wrap, Clear, Padding, Widget, Table, Row},
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap, Clear, Padding, Table, Row},
     Frame, text::{Line, Span},
 };
 

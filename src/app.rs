@@ -21,7 +21,7 @@ use crate::printer::{Printer, Heater, PrintStats, FileMetadata};
 use crate::ui::stateful_list::StatefulList;
 
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tab {
     Main,
     Help,
@@ -39,7 +39,7 @@ pub struct JsonRpcResponse {
     id: String,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub struct JsonRpcServerRequest {
     jsonrpc: String,
     pub method: String,
@@ -71,12 +71,12 @@ impl JsonRpcClientRequest {
 pub struct RpcRequest {
     pub method: String,
 }
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TabsState {
     pub titles: Vec<String>,
     pub index: usize,
 }
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HistoryItem {
     pub filename: String,
     pub status: String,
@@ -105,7 +105,7 @@ pub struct InputState {
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
-const CONNECTION: &'static str = "ws://voron.ink/websocket";
+
 /// Application.
 
 pub struct App {
@@ -550,10 +550,6 @@ impl App {
                 _ => {}
             }
         }
-    }
-
-    pub fn set_image(&mut self, data: Vec<u8>) {
-
     }
 
     pub fn add_job(&mut self, job: &Value) {

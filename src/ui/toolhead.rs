@@ -50,19 +50,19 @@ where
         ]).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
 
         Row::new(vec![
-            Line::from("X").alignment(Alignment::Center),
+            Line::from(Span::styled("X", Style::default().fg(Color::White).add_modifier(Modifier::BOLD))).alignment(Alignment::Center),
             Line::from(format!("{:.2}mm", app.printer.toolhead.position.x)).alignment(Alignment::Center),
             Line::from(format!("{}", app.printer.toolhead.homed.x)).alignment(Alignment::Center),
             Line::from(action_button(x_button)).alignment(Alignment::Center),
         ]).style(Style::default()),
         Row::new(vec![
-            Line::from("Y").alignment(Alignment::Center),
+            Line::from(Span::styled("Y", Style::default().fg(Color::White).add_modifier(Modifier::BOLD))).alignment(Alignment::Center),
             Line::from(format!("{:.2}mm", app.printer.toolhead.position.y)).alignment(Alignment::Center),
             Line::from(format!("{}", app.printer.toolhead.homed.y)).alignment(Alignment::Center),
             Line::from(action_button(y_button)).alignment(Alignment::Center),
         ]).style(Style::default()),
         Row::new(vec![
-            Line::from("Z").alignment(Alignment::Center),
+            Line::from(Span::styled("Z", Style::default().fg(Color::White).add_modifier(Modifier::BOLD))).alignment(Alignment::Center),
             Line::from(format!("{:.3}mm", app.printer.toolhead.position.z)).alignment(Alignment::Center),
             Line::from(format!("{}", app.printer.toolhead.homed.z)).alignment(Alignment::Center),
             Line::from(action_button(z_button)).alignment(Alignment::Center),
