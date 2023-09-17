@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use chrono::prelude::*;
 use std::io::Write;
 
-use crate::printer::{Printer, Heater, PrintStats, FileMetadata};
+use crate::printer::{Printer, Heater, PrintStats, FileMetadata, Webcam};
 use crate::ui::stateful_list::StatefulList;
 
 
@@ -31,6 +31,8 @@ pub enum Tab {
     ExtruderHelp,
     Console,
     ConsoleHelp,
+    Webcam,
+    WebcamHelp,
 }
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct JsonRpcResponse {
@@ -401,7 +403,7 @@ impl App {
     fn send_start_messages(&mut self) {
         self.send_message(String::from("server.connection.identify"), json!({
             "client_name": "Krui",
-            "version":	"0.0.1",
+            "version":	env!("CARGO_PKG_VERSION"),
             "type":	"desktop",
             "url":	"https://github.com/jfoucher/krui"
         }));
@@ -413,6 +415,7 @@ impl App {
             "since": 0,
             "order": "desc"
         }));
+        self.send_message(String::from("server.webcams.list"), json!({}));
     }
 
     pub fn handle_response(&mut self, response: JsonRpcResponse) {
@@ -546,6 +549,40 @@ impl App {
                         }
                     }
                 },
+                "server.webcams.list" => {
+                    if let Some(webcams) = response.result.get("webcams") {
+                        
+                        if webcams.is_array() {
+                            for cam in webcams.as_array().unwrap() {
+                                let mut webcam = Webcam {
+                                    name: "".to_string(),
+                                    stream_url: "".to_string(),
+                                    snapshot_url: "".to_string(),
+                                    flip_horizontal: false,
+                                    flip_vertical: false,
+                                    render: 0,
+                                };
+                                log::info!("cam {:?}", cam);
+                                if let Some(name) = cam.get("name") {
+                                    webcam.name = name.as_str().unwrap().to_string();
+                                }
+                                if let Some(stream_url) = cam.get("stream_url") {
+                                    webcam.stream_url = stream_url.as_str().unwrap().to_string();
+                                }
+                                if let Some(snapshot_url) = cam.get("snapshot_url") {
+                                    webcam.snapshot_url = snapshot_url.as_str().unwrap().to_string();
+                                }
+                                if let Some(flip_horizontal) = cam.get("flip_horizontal") {
+                                    webcam.flip_horizontal = flip_horizontal.as_bool().unwrap();
+                                }
+                                if let Some(flip_vertical) = cam.get("flip_vertical") {
+                                    webcam.flip_vertical = flip_vertical.as_bool().unwrap();
+                                }
+                                self.printer.webcams.push(webcam);
+                            }
+                        }
+                    }
+                }
 
                 _ => {}
             }

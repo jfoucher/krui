@@ -1,6 +1,15 @@
 use chrono::DateTime;
 use crate::{ui::stateful_list::StatefulList, app::HistoryItem};
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Webcam {
+    pub name: String,
+    pub stream_url: String,
+    pub snapshot_url: String,
+    pub flip_horizontal: bool,
+    pub flip_vertical: bool,
+    pub render: u64,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Toolhead {
@@ -121,6 +130,7 @@ pub struct Printer {
     pub sysload: f64,
     pub will_print_file: Option<HistoryItem>,
     pub current_print: Option<PrintStats>,
+    pub webcams: Vec<Webcam>,
 }
 
 impl Printer {
@@ -150,6 +160,7 @@ impl Printer {
             sysload: 0.0,
             will_print_file: None,
             current_print: None,
+            webcams: vec![],
         }
     }
 

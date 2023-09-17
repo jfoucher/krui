@@ -27,7 +27,11 @@ Arrow keys can be used to select a heater.
 Pressing <Enter> on a selected heater will open a dialog to set the target temperature for that heater.
 
 ## Printing
+The panel displayed while printing, shows the name of the current file, the print progress and an estimation of the ETA for the print.
+The current layer, the toolhead speed, the filament used and the flow are also displayed.
+You will also be able to see the print preview if one is available for the file being printed.
 
+You can press F10 at any time to trigger an emergency stop. This will stop the print and disconnect from the printer.
 ";
 
 
@@ -65,6 +69,7 @@ where
         Button::new("Toolhead".to_string(), Some("3".to_string())),
         Button::new("Extruder".to_string(), Some("4".to_string())),
         Button::new("Console".to_string(), Some("5".to_string())),
+        Button::new("Webcam".to_string(), Some("6".to_string())),
         Button::new(if app.printer.connected {"STOP".to_string()} else {"Restart".to_string()}, Some("10".to_string())),
     ];
     header::draw_footer(f, chunks[1], buttons);
@@ -363,6 +368,7 @@ where
         Button::new("Toolhead".to_string(), Some("3".to_string())),
         Button::new("Extruder".to_string(), Some("4".to_string())),
         Button::new("Console".to_string(), Some("5".to_string())),
+        Button::new("Webcam".to_string(), Some("6".to_string())),
         Button::new(if app.printer.connected {"STOP".to_string()} else {"Restart".to_string()}, Some("10".to_string())),
     ];
     header::draw_footer(f, chunks[3], buttons);

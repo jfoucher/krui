@@ -38,6 +38,8 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
                 Tab::ExtruderHelp => Tab::Extruder,
                 Tab::Console => Tab::ConsoleHelp,
                 Tab::ConsoleHelp => Tab::Console,
+                Tab::Webcam => Tab::WebcamHelp,
+                Tab::WebcamHelp => Tab::Webcam,
             }
         }
         KeyCode::F(2) => {
@@ -61,6 +63,13 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
             app.current_tab = match app.current_tab {
                 Tab::Console => Tab::Main,
                 _ => Tab::Console,
+            }
+        }
+
+        KeyCode::F(6) => {
+            app.current_tab = match app.current_tab {
+                Tab::Webcam => Tab::Main,
+                _ => Tab::Webcam,
             }
         }
         KeyCode::F(10) => {

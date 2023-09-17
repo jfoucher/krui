@@ -1,7 +1,9 @@
 pub mod header;
 pub mod toolhead;
 pub mod main;
+
 pub mod console;
+pub mod webcam;
 pub mod stateful_list;
 use std::rc::Rc;
 
@@ -13,7 +15,7 @@ use tui::{
     Frame, text::{Line, Span},
 };
 
-use crate::{app::App, button::{Button, action_button}};
+use crate::{app::App, button::{Button, action_button}, printer::Webcam};
 use crate::app::Tab;
 
 
@@ -44,6 +46,8 @@ pub fn render<B: Backend>(app: &mut App, frame: &mut Frame<'_, B>) {
         Tab::ToolheadHelp => toolhead::draw_toolhead_help(frame, app, chunks[1]),
         Tab::Console => console::draw_tab(frame, app, chunks[1]),
         Tab::ConsoleHelp => console::draw_help(frame, app, chunks[1]),
+        Tab::Webcam => webcam::draw_tab(frame, app, chunks[1]),
+        Tab::WebcamHelp => webcam::draw_help(frame, app, chunks[1]),
         _ => {}
     }
 
